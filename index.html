@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Popshot — Designed captions without animating every word</title>
+<meta name="description" content="Upload a talking-head clip, pick a designed caption style, fix the words, export a post-ready vertical short. All in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="gfonts" rel="stylesheet" href="">
+<link rel="stylesheet" href="css/landing.css">
+</head>
+<body>
+
+<header class="nav">
+  <a class="logo" href="#">✦ Popshot</a>
+  <nav class="nav-links">
+    <a href="#styles">Styles</a>
+    <a href="#how">How it works</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#faq">FAQ</a>
+  </nav>
+  <a class="btn btn-primary" href="editor.html">＋ Create →</a>
+</header>
+
+<!-- ── Hero ────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="marquee" aria-hidden="true"><div class="marquee-track" id="mq1"></div></div>
+
+  <h1>make every word <span class="pop-word">pop.</span></h1>
+  <p class="sub">Upload a talking-head clip, pick a designed caption style, fix the words instead of a timeline, and walk away with a short that's ready to post. All in your browser.</p>
+
+  <div class="hero-drop" id="heroDrop">
+    <div class="hd-plus">＋</div>
+    <p><strong>Drop video</strong> or click to upload</p>
+    <span class="hd-sub">MP4 · MOV · WebM</span>
+    <input type="file" id="heroFile" accept="video/*" hidden>
+  </div>
+  <p class="tiny">Everything runs locally in your browser — your clip never leaves your machine.</p>
+
+  <div class="hero-badges">
+    <span>Made for</span><b>TikTok</b><b>Reels</b><b>Shorts</b>
+  </div>
+</section>
+
+<!-- ── Style gallery ───────────────────────────────────────── -->
+<section class="section" id="styles">
+  <div class="kicker">CAPTION TYPOGRAPHY</div>
+  <h2>Captions designed to be read — not default subtitles.</h2>
+  <p class="lead">Each style carries its own fonts, colors, emphasis and motion, so the type looks intentional before you ever open the editor.</p>
+
+  <div class="cat-tabs" id="catTabs"></div>
+  <p class="cat-desc" id="catDesc"></p>
+  <div class="style-grid" id="styleGrid"></div>
+</section>
+
+<!-- ── How it works ────────────────────────────────────────── -->
+<section class="section alt" id="how">
+  <div class="marquee small" aria-hidden="true"><div class="marquee-track" id="mq2"></div></div>
+  <div class="kicker">HOW IT WORKS</div>
+  <h2>One clip in. A finished short out.</h2>
+  <p class="lead">Transcript, captions, hook and thumbnail move together through a single flow — nothing falls out of sync between steps.</p>
+
+  <div class="steps-grid">
+    <div class="step-card"><div class="num">1</div><h3>Upload a clip</h3><p>Drop in any talking-head video. Speech is transcribed word-by-word, entirely on your device.</p></div>
+    <div class="step-card"><div class="num">2</div><h3>Pick a style</h3><p>Choose a designed caption look — karaoke flips, boxed highlights, neon glows, serif lockups.</p></div>
+    <div class="step-card"><div class="num">3</div><h3>Clean the words</h3><p>Click any word to correct it, cut fillers in one click. Captions retime themselves as you type.</p></div>
+    <div class="step-card"><div class="num">4</div><h3>Export & post</h3><p>Render the vertical short with the hook line and cover image already handled.</p></div>
+  </div>
+</section>
+
+<!-- ── Deep features ───────────────────────────────────────── -->
+<section class="section">
+  <div class="feature-row">
+    <div class="feature-text">
+      <div class="kicker">01 / HOOK</div>
+      <h3>Hooks mined from what you actually said.</h3>
+      <p>Popshot scores every sentence in the transcript and offers the lines most likely to stop a scroll — so the hook always matches the clip.</p>
+      <ul><li>Ranked suggestions from the transcript</li><li>One click to apply</li><li>Or write your own</li></ul>
+    </div>
+    <div class="feature-demo demo-hook">
+      <div class="demo-chip selected">“Most people get this completely wrong.”</div>
+      <div class="demo-chip">“Here's the part nobody shows you.”</div>
+      <div class="demo-chip">“Start with one specific problem.”</div>
+      <div class="demo-tag">FROM TRANSCRIPT</div>
+    </div>
+  </div>
+
+  <div class="feature-row rev">
+    <div class="feature-text">
+      <div class="kicker">02 / CLEANUP</div>
+      <h3>Edit the words. The captions follow.</h3>
+      <p>The transcript doubles as the editor. Correct a word, strike a filler — the caption preview updates the moment you type. No timeline, no keyframes.</p>
+      <ul><li>Word-level edits</li><li>One-click filler removal</li><li>Live caption resync</li></ul>
+    </div>
+    <div class="feature-demo demo-words">
+      <span class="w">Start</span><span class="w">with</span><span class="w">one</span>
+      <span class="w hl">specific</span><span class="w cut">um</span><span class="w">problem</span>
+      <div class="demo-tag green">CAPTION SYNCED ✓</div>
+    </div>
+  </div>
+
+  <div class="feature-row">
+    <div class="feature-text">
+      <div class="kicker">03 / PACKAGE</div>
+      <h3>Covers built from your own frames.</h3>
+      <p>Scrub to the best frame and apply a treatment — bold text, tape highlight, editorial serif or a stylized scene. The post ships finished, not just captioned.</p>
+      <ul><li>Any frame from your clip</li><li>Five text treatments</li><li>1080×1920 PNG download</li></ul>
+    </div>
+    <div class="feature-demo demo-thumbs">
+      <div class="dt"><b>BOLD</b><span>High-contrast title</span></div>
+      <div class="dt"><b>TAPE</b><span>Highlight strips</span></div>
+      <div class="dt"><b>SCENE</b><span>Stylized colorway</span></div>
+      <div class="demo-tag">THUMBNAIL READY</div>
+    </div>
+  </div>
+
+  <div class="feature-row rev">
+    <div class="feature-text">
+      <div class="kicker">04 / DEPTH</div>
+      <h3>Behind-the-subject captions.</h3>
+      <p>Big statement type rendered <em>behind</em> the speaker, using on-device person segmentation — live in the preview and identical in the export.</p>
+      <ul><li>Layered depth look</li><li>Runs on-device, no upload</li><li>Same pixels in preview & export</li></ul>
+    </div>
+    <div class="feature-demo demo-behind">
+      <div class="bb-text">BIG<br>IDEA</div>
+      <div class="bb-person"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Use cases ───────────────────────────────────────────── -->
+<section class="section alt">
+  <div class="kicker">MADE FOR CONSISTENCY</div>
+  <h2>Posting weekly stops being the hard part.</h2>
+  <div class="use-grid">
+    <div class="use-card"><h3>Coaches</h3><p>One recorded tip becomes a polished, captioned reel your audience takes seriously.</p><span class="use-tag">ADVICE → REEL</span></div>
+    <div class="use-card"><h3>Educators</h3><p>A lesson recording becomes a short where the key words carry visible emphasis.</p><span class="use-tag">LESSON → SHORT</span></div>
+    <div class="use-card"><h3>Founders</h3><p>Announce the new release yourself — no editor on retainer required.</p><span class="use-tag">UPDATE → POST</span></div>
+    <div class="use-card"><h3>Podcasters</h3><p>Grab the best minute of an episode and have it vertical and captioned in minutes.</p><span class="use-tag">EPISODE → CLIP</span></div>
+  </div>
+</section>
+
+<!-- ── Pricing ─────────────────────────────────────────────── -->
+<section class="section" id="pricing">
+  <div class="kicker">PRICING</div>
+  <h2>Free to start. No card needed.</h2>
+  <p class="lead">This is a self-hosted clone — every tier below is unlocked. The tiers mirror how a hosted version would be packaged.</p>
+  <div class="price-grid">
+    <div class="price-card">
+      <h3>Free</h3><div class="price">$0</div>
+      <ul><li>1 video · up to 2 min</li><li>Standard caption styles</li><li>Transcript editor</li><li>Full preview</li></ul>
+    </div>
+    <div class="price-card featured">
+      <div class="price-badge">MOST POPULAR</div>
+      <h3>Creator</h3><div class="price">$9<span>/mo</span></div>
+      <ul><li>Unlimited videos, any length</li><li>Creator caption styles</li><li>MP4 export</li><li>45 min/week processing</li><li>Thumbnail builder</li></ul>
+    </div>
+    <div class="price-card">
+      <h3>Pro</h3><div class="price">$18<span>/mo</span></div>
+      <ul><li>Every style</li><li>Behind-the-subject captions</li><li>Stylized AI scenes</li><li>60 min/week processing</li><li>4K / 60fps add-on</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ─────────────────────────────────────────────────── -->
+<section class="section alt" id="faq">
+  <div class="kicker">QUESTIONS</div>
+  <h2>Before you upload.</h2>
+  <div class="faq-list">
+    <details><summary>How does Popshot work?</summary><p>Upload a talking-head clip, pick a caption style, and clean up the words in the transcript. Popshot suggests a hook line and builds thumbnail options, then renders a vertical short ready for TikTok, Reels or YouTube Shorts.</p></details>
+    <details><summary>Does anything get uploaded to a server?</summary><p>No. Transcription (Whisper), person segmentation and video rendering all run inside your browser. The only network traffic is downloading the AI models and fonts the first time.</p></details>
+    <details><summary>Do I edit on a timeline?</summary><p>There is no timeline. Every change happens in the transcript: correct a word or strike a filler and the caption track retimes itself automatically.</p></details>
+    <details><summary>What if I change the words after picking a style?</summary><p>Go ahead. The captions resync automatically so they always match the transcript.</p></details>
+    <details><summary>How many caption styles are there?</summary><p>30+ designed styles across Popular, Playful, Multiline, Dynamic, Editorial, Social, Neon &amp; FX, Retro, Desi and Speakers — karaoke color-flips, box highlights, neon glows, kinetic squash-and-stretch, serif lockups and more. Each pairs a primary sentence font with an accent emphasis font.</p></details>
+    <details><summary>What are behind-the-subject captions?</summary><p>Caption words rendered behind the speaker for a layered depth look, using on-device person segmentation — live in the editor preview and identical in the export.</p></details>
+    <details><summary>What resolution and format does it export?</summary><p>1080×1920 vertical 9:16 by default (1080×1080 and 1920×1080 also available). Chrome exports H.264 MP4 directly; other browsers export WebM. The preview and the export render the exact same composition.</p></details>
+    <details><summary>What kind of videos work best?</summary><p>Short talking-head clips — you on camera, talking. Keep each clip under 5 minutes for snappy transcription.</p></details>
+  </div>
+</section>
+
+<!-- ── CTA ─────────────────────────────────────────────────── -->
+<section class="cta">
+  <div class="marquee small" aria-hidden="true"><div class="marquee-track" id="mq3"></div></div>
+  <h2>The edit was the hard part.<br>Not anymore.</h2>
+  <a class="btn btn-primary btn-big" href="editor.html">Try Popshot free →</a>
+  <p class="tiny">FREE TO START · RUNS LOCALLY · NO CARD NEEDED</p>
+</section>
+
+<footer class="footer">
+  <span>✦ Popshot — a self-hosted, in-browser caption studio.</span>
+  <span>Built as a functional clone study. Not affiliated with makemoonshot.co.</span>
+</footer>
+
+<script type="module" src="js/landing.js"></script>
+</body>
+</html>
