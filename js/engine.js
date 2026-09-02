@@ -24,6 +24,9 @@ export function groupWords(words, preset) {
       !cur ||
       cur.words.length >= maxWords ||
       (w.start - cur.end) > maxGap ||
+      // split-layer styles: a keyword opens its own group, so the hero stands
+      // alone and the front line reads as a clean phrase after it
+      (preset.extra?.splitHero && w.key && cur.words.length > 0) ||
       /[.!?]["'”’]?$/.test(cur.words[cur.words.length - 1].text);
     if (startNew) {
       cur = { start: w.start, end: w.end, words: [] };
@@ -81,7 +84,7 @@ function applyTransform(text, f) {
 const layoutCache = new WeakMap(); // group -> { key, laid }
 
 function layoutGroupCached(ctx, group, preset, W, H, version) {
-  const key = `${preset.id}|${W}x${H}|v${version || 0}`;
+  const key = `${preset.id}|${W}x${H}|v${version || 0}|h${group._heroY ?? ''},${group._heroX ?? ''},${group._heroShrink ?? ''}`;
   const hit = layoutCache.get(group);
   if (hit && hit.key === key) return hit.laid;
   const laid = layoutGroup(ctx, group, preset, W, H);
@@ -150,20 +153,27 @@ function layoutGroup(ctx, group, preset, W, H) {
     let y = H * preset.pos.y - stackH / 2;
     for (const line of laid) {
       const scale = line.lw > maxW ? maxW / line.lw : 1;
-      let lineCx = cx, lineY;
+      let lineCx = cx, lineY, shrink = 1;
       if (split && line.hero) {
-        lineCx = W * (preset.heroPos?.x ?? 0.5);
-        lineY = H * (preset.heroPos?.y ?? 0.2) - line.lh / 2;
+        // smart placement: prefer the per-group spot found by heroSpot()
+        // (least person coverage) unless the user pinned the hero themselves
+        const auto = preset.heroPos?.auto !== false;
+        lineCx = W * ((auto && group._heroX != null) ? group._heroX : (preset.heroPos?.x ?? 0.5));
+        const hy = (auto && group._heroY != null) ? group._heroY : (preset.heroPos?.y ?? 0.2);
+        if (auto && group._heroShrink) shrink = group._heroShrink;
+        lineY = H * hy - line.lh * shrink / 2;
       } else {
         lineY = y;
         y += line.lh;
       }
-      let x = lineCx - Math.min(line.lw, maxW) / 2;
+      const effScale = scale * shrink;
+      let x = lineCx - Math.min(line.lw, maxW) * shrink / 2;
       for (const it of line.items) {
-        it.x = x; it.y = lineY + line.lh / 2; it.scale = scale;
-        x += (it.wd + line.sw) * scale;
+        it.x = x; it.y = lineY + line.lh * shrink / 2; it.scale = effScale;
+        x += (it.wd + line.sw) * effScale;
       }
     }
+    clampToFrame(laid, H, split);
     return laid;
   }
 
@@ -213,7 +223,28 @@ function layoutGroup(ctx, group, preset, W, H) {
     laid.push({ ...line, lh, font: f });
     y += lh;
   }
+  clampToFrame(laid, H, false);
   return laid;
+}
+
+// Keeps caption blocks inside the frame: if a stack (or the hero, separately)
+// would spill past the top or bottom margin, the whole block shifts back in.
+function clampToFrame(laid, H, split) {
+  const clusters = split
+    ? [laid.filter(l => l.hero), laid.filter(l => !l.hero)]
+    : [laid];
+  for (const cluster of clusters) {
+    let minY = Infinity, maxY = -Infinity;
+    for (const line of cluster) for (const it of line.items) {
+      minY = Math.min(minY, it.y - line.lh / 2);
+      maxY = Math.max(maxY, it.y + line.lh / 2);
+    }
+    if (minY === Infinity) continue;
+    let shift = 0;
+    if (maxY > H * 0.97) shift = H * 0.97 - maxY;
+    else if (minY < H * 0.03) shift = H * 0.03 - minY;
+    if (shift) for (const line of cluster) for (const it of line.items) it.y += shift;
+  }
 }
 
 // ── Word draw ──────────────────────────────────────────────────────────────
@@ -389,6 +420,16 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   const g = groupAt(groups, t);
   if (!g) { drawHookTitle(ctx, t, preset, opts, W, H); return { bounds: null }; }
 
+  // smart hero placement: once per group, find the horizontal band where the
+  // least of the speaker sits and anchor the hero word there — a close-up
+  // must not bury the big word behind a face
+  if (preset.extra.splitHero && opts.mask && preset.heroPos?.auto !== false && g._heroY == null) {
+    const spot = heroSpot(opts.mask, preset.heroPos?.y ?? 0.16);
+    g._heroY = spot.y;
+    g._heroX = spot.x;
+    g._heroShrink = spot.cov > 0.55 ? 0.72 : 1;  // crowded frame → smaller hero
+  }
+
   const state = {
     groupStart: g.start,
     active: g.words.find(w => t >= w.start && t < w.end) ||
@@ -485,6 +526,42 @@ function drawHookTitle(ctx, t, preset, opts, W, H) {
   }
   ctx.restore();
   ctx.textAlign = 'left';
+}
+
+// Scans the person mask over a grid of candidate spots (three columns × six
+// height bands in the upper 60%) and returns where the hero word is most
+// visible. On tight close-ups where the speaker fills every cell, the caller
+// also gets the coverage so it can shrink the hero — partial occlusion reads
+// as depth, a buried word reads as a mistake.
+function heroSpot(mask, fallbackY) {
+  try {
+    const mw = mask.width, mh = mask.height;
+    if (!mw || !mh) return { y: fallbackY, x: null, cov: 0 };
+    const mctx = mask.getContext('2d');
+    const XC = [0.5, 0.32, 0.68];         // center first — ties go to the classic look
+    const YC = [0.10, 0.16, 0.22, 0.30, 0.40, 0.50];
+    let best = { y: fallbackY, x: null, cov: Infinity };
+    for (const fx of XC) {
+      const x0 = Math.max(0, Math.floor(mw * (fx - 0.28)));
+      const x1 = Math.min(mw, Math.ceil(mw * (fx + 0.28)));
+      for (const fy of YC) {
+        let sum = 0, n = 0;
+        for (const dy of [-0.05, 0, 0.05]) {
+          const y = Math.round(mh * Math.min(0.95, Math.max(0.02, fy + dy)));
+          const row = mctx.getImageData(x0, y, x1 - x0, 1).data;
+          for (let i = 3; i < row.length; i += 16) { sum += row[i]; n++; }
+        }
+        const raw = sum / Math.max(1, n) / 255;
+        // gentle bias toward the designed spot (centered, high) so we only
+        // wander when it actually buys visibility
+        const cov = raw + Math.abs(fy - fallbackY) * 0.12 + (fx === 0.5 ? 0 : 0.06);
+        if (cov < best.cov) best = { y: fy, x: fx === 0.5 ? null : fx, cov: raw };
+      }
+    }
+    return best;
+  } catch {
+    return { y: fallbackY, x: null, cov: 0 };
+  }
 }
 
 export function drawCover(ctx, source, W, H) {

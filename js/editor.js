@@ -144,7 +144,7 @@ function buildEff() {
   if (o.size) { eff.font.size *= o.size; if (eff.accentFont) eff.accentFont.size *= o.size; }
   if (o.posY != null) eff.pos.y = o.posY;
   if (o.posX != null) eff.pos.x = o.posX;
-  if (o.heroPosY != null) eff.heroPos.y = o.heroPosY;
+  if (o.heroPosY != null) { eff.heroPos.y = o.heroPosY; eff.heroPos.auto = false; } // user pinned it — stop auto-placement
   if (o.heroPosX != null) eff.heroPos.x = o.heroPosX;
   if (o.maxWords) eff.grouping.maxWords = o.maxWords;
   if (o.caseMode !== undefined && o.caseMode !== null) {
@@ -746,6 +746,11 @@ async function selectPreset(id) {
   rememberStyle(state.preset.id);
   $('speakerCard').hidden = !state.preset.extra.lowerThird;
   $('ftHeroRow').hidden = !state.preset.extra.splitHero;
+  if (state.words.length) {
+    toast(state.preset.extra.splitHero
+      ? 'Drag any text to move it · pull a corner to resize · the big word places itself around you'
+      : 'Drag the caption to move it · pull a corner to resize', 4500);
+  }
   if (state.preset.behind && !maskTracker) {
     maskTracker = new MaskTracker();
     toast('Loading person-segmentation model for behind-the-subject captions…');

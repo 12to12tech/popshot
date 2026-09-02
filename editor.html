@@ -252,18 +252,18 @@
   <!-- ── Stage ─────────────────────────────────────────────────── -->
   <main class="stage">
     <div class="stage-inner">
-      <div class="canvas-wrap" id="canvasWrap">
-        <div class="canvas-pills">
-          <button class="cpill" id="safeBtn">Safe zone</button>
-          <button class="cpill cpill-hero" id="cutoutBtn">✨ Get sharper cutouts</button>
-          <div class="cpill-select">
-            <select id="aspectSel" aria-label="Aspect ratio">
-              <option value="9:16" selected>9:16</option>
-              <option value="1:1">1:1</option>
-              <option value="16:9">16:9</option>
-            </select>
-          </div>
+      <div class="canvas-pills">
+        <button class="cpill" id="safeBtn">Safe zone</button>
+        <button class="cpill cpill-hero" id="cutoutBtn">✨ Get sharper cutouts</button>
+        <div class="cpill-select">
+          <select id="aspectSel" aria-label="Aspect ratio">
+            <option value="9:16" selected>9:16</option>
+            <option value="1:1">1:1</option>
+            <option value="16:9">16:9</option>
+          </select>
         </div>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap">
         <canvas id="previewCanvas" width="540" height="960"></canvas>
 
         <!-- empty state / upload overlay -->

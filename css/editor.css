@@ -255,19 +255,19 @@ body {
 .canvas-wrap.wide { aspect-ratio: 16/9; height: auto; width: min(56vw, 720px); }
 #previewCanvas { height: 100%; width: 100%; display: block; touch-action: none; }
 .canvas-pills {
-  position: absolute; top: 10px; left: 10px; right: 10px; z-index: 5;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 8px; width: 100%; max-width: 560px;
+  justify-content: center;
 }
 .cpill {
-  border: none; border-radius: 999px; padding: 6px 11px; cursor: pointer;
-  font: 700 11px Inter; background: rgba(20,20,26,.55); color: #fff; backdrop-filter: blur(6px);
+  border: 1px solid var(--line2); border-radius: 999px; padding: 6px 11px; cursor: pointer;
+  font: 700 11px Inter; background: var(--bg2); color: var(--text);
 }
-.cpill.on { background: var(--yellow); color: #000; }
-.cpill-hero { margin-inline: auto; background: rgba(255,255,255,.92); color: var(--brand); }
-.cpill-hero.on { background: var(--brand); color: #fff; }
+.cpill.on { background: var(--yellow); border-color: var(--yellow); color: #000; }
+.cpill-hero { background: var(--bg2); color: var(--brand); }
+.cpill-hero.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 .cpill-select select {
-  border: none; border-radius: 999px; padding: 6px 8px; cursor: pointer;
-  font: 700 11px Inter; background: rgba(20,20,26,.55); color: #fff; backdrop-filter: blur(6px);
+  border: 1px solid var(--line2); border-radius: 999px; padding: 6px 10px; cursor: pointer;
+  font: 700 11px Inter; background: var(--bg2); color: var(--text);
   appearance: none; -webkit-appearance: none; text-align: center;
 }
 
