@@ -322,14 +322,22 @@ function drawWord(ctx, it, line, preset, state, W, t) {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  // glow — every word glows; the active word glows brighter in its own color
+  // glow — every word glows; the active word glows brighter in its own color.
+  // fxScale lets the Finish control scale every treatment proportionally, and
+  // shadowSharp switches to an offset print-style shadow with no blur.
+  const fx = c.fxScale || 1;
   if (c.glow) {
     ctx.shadowColor = active && preset.emphasis === 'glow' ? (c.active || c.glow) : c.glow;
-    ctx.shadowBlur = px * (active ? 0.55 : 0.35);
+    ctx.shadowBlur = px * (active ? 0.55 : 0.35) * fx;
+  } else if (c.shadow && c.shadowSharp) {
+    ctx.shadowColor = c.shadow;
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = px * 0.045 * fx;
+    ctx.shadowOffsetY = px * 0.06 * fx;
   } else if (c.shadow) {
     ctx.shadowColor = c.shadow;
-    ctx.shadowBlur = px * 0.18;
-    ctx.shadowOffsetY = px * 0.06;
+    ctx.shadowBlur = px * 0.18 * fx;
+    ctx.shadowOffsetY = px * 0.05 * fx;
   }
 
   // stroke

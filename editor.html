@@ -165,6 +165,19 @@
         <label class="tp-field color-field"><span>Highlight color</span>
           <input type="color" id="ftActive" value="#ffe600">
         </label>
+        <label class="tp-field"><span>Finish</span>
+          <select id="ftFinish">
+            <option value="">Style default</option>
+            <option value="soft">Soft lift — floating shadow</option>
+            <option value="hard">Hard punch — offset print shadow</option>
+            <option value="contour">Contour — clean outline</option>
+            <option value="neon">Neon — highlight-color glow</option>
+            <option value="clean">Clean — no effects</option>
+          </select>
+        </label>
+        <label class="tp-field"><span>Finish intensity <b id="ftFxVal">100%</b></span>
+          <input type="range" id="ftFx" min="50" max="160" value="100" step="5">
+        </label>
       </div>
       <div class="tp-block">
         <button class="btn btn-small btn-plain" id="ftReset">↺ Reset to style defaults</button>

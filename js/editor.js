@@ -164,6 +164,20 @@ function buildEff() {
   if (o.text) eff.colors.text = o.text;
   if (o.active) { eff.colors.active = o.active; if (p.colors.accent) eff.colors.accent = o.active; }
   if (state.autoEmoji) eff.extra.autoEmoji = true;
+  // Finish recipes — deliberate, size-relative treatments (never raw sliders):
+  // soft = floating shadow · hard = offset print shadow · contour = outline
+  // only · neon = highlight-colored glow · clean = nothing at all
+  if (o.finish) {
+    const c = eff.colors;
+    delete c.glow; delete c.shadowSharp;
+    c.shadow = null; c.stroke = null; c.strokeWidth = 0;
+    if (o.finish === 'soft') c.shadow = 'rgba(0,0,0,.45)';
+    else if (o.finish === 'hard') { c.shadow = 'rgba(0,0,0,.85)'; c.shadowSharp = true; }
+    else if (o.finish === 'contour') { c.stroke = '#000000'; c.strokeWidth = 0.01; }
+    else if (o.finish === 'neon') c.glow = c.active || '#ffe600';
+    // 'clean' leaves everything stripped
+  }
+  if (o.fxScale) eff.colors.fxScale = o.fxScale;
   state.styleVersion++;
   state.eff = eff;
 }
@@ -911,6 +925,9 @@ function syncFineTune() {
   $('ftCase').value = o.caseMode ?? '';
   $('ftText').value = o.text || toHex(p.colors.text) || '#ffffff';
   $('ftActive').value = o.active || toHex(p.colors.active) || '#ffe600';
+  $('ftFinish').value = o.finish || '';
+  $('ftFx').value = Math.round((o.fxScale || 1) * 100);
+  $('ftFxVal').textContent = Math.round((o.fxScale || 1) * 100) + '%';
 }
 function applyFineTune() { buildEff(); rebuildGroups(); renderTranscript(); }
 
@@ -941,6 +958,16 @@ $('ftCase').addEventListener('change', (e) => {
 });
 $('ftText').addEventListener('input', (e) => { state.overrides.text = e.target.value; applyFineTune(); });
 $('ftActive').addEventListener('input', (e) => { state.overrides.active = e.target.value; applyFineTune(); });
+$('ftFinish').addEventListener('change', (e) => {
+  if (e.target.value === '') delete state.overrides.finish;
+  else state.overrides.finish = e.target.value;
+  applyFineTune();
+});
+$('ftFx').addEventListener('input', (e) => {
+  state.overrides.fxScale = e.target.value / 100;
+  $('ftFxVal').textContent = e.target.value + '%';
+  applyFineTune();
+});
 $('ftReset').addEventListener('click', () => {
   pushUndo();
   state.overrides = {};

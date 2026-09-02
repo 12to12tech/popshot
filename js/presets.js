@@ -5,6 +5,22 @@
 // colors, grouping, emphasis of the active word, entrance animation, position
 // and special finishes (glow, pixel, glitch, tape, boxes, lower-thirds…).
 //
+// PAIRING SYSTEM — every two-font style follows one rule: the pair shares ONE
+// trait and contrasts on ONE axis. Never two display faces together.
+//   A. Didone display + its own quiet serif voice   (Gloock ↔ Instrument Serif
+//      italic) — shared era, contrast of scale/weight. The fashion-cover look.
+//   B. Grotesque black + light spaced grotesque     (Archivo Black ↔ Inter 300
+//      tracked caps) — shared skeleton, contrast of weight. Swiss.
+//   C. Fat-face didone + neutral text grotesque     (Abril Fatface ↔ Inter) —
+//      contrast of era AND weight, shared neutrality of the support.
+//   D. Condensed impact + humanist text             (Anton ↔ Source Sans 3) —
+//      contrast of width, shared uprightness.
+//   E. Raw marker/spray + engineered sans           (Rubik Spray Paint ↔ Inter
+//      600 tracked caps) — contrast of texture, shared boldness.
+//   F. Slab display + condensed caps                (Alfa Slab One ↔ Oswald) —
+//      shared sturdiness, contrast of width. Letterpress poster.
+// Support text is always the quieter voice: lighter, smaller, wider-tracked.
+//
 // Schema reference:
 //   id, name, category, badge ('NEW'|'TRENDING'|null), tier ('free'|'creator'|'pro')
 //   font:       { family, weight, size, transform?, style?, letterSpacing?, lineHeight? }
@@ -80,19 +96,23 @@ export const PRESETS = [
   // carrying the hero word, its own italic (or a quiet neutral sans) carrying
   // the supporting words — contrast in size and voice, harmony in family.
   D({
+    // Pairing A: Gloock didone hero + Instrument Serif italic support —
+    // same serif elegance, ×3 scale contrast. The fashion-cover look.
     id: 'gilded', name: 'Gilded', category: 'behind', badge: 'TRENDING', tier: 'pro', behind: true,
-    font: { family: 'Fraunces', weight: 400, style: 'italic', size: 0.088, transform: 'lower', lineHeight: 1.08 },
-    accentFont: { family: 'Fraunces', weight: 600, size: 0.27, transform: 'lower', letterSpacing: -0.04 },
+    font: { family: '"Instrument Serif"', weight: 400, style: 'italic', size: 0.092, transform: 'lower', lineHeight: 1.06 },
+    accentFont: { family: 'Gloock', weight: 400, size: 0.28, transform: 'lower', letterSpacing: -0.02 },
     grouping: { mode: 'lockup', maxWords: 6 },
     heroPos: { y: 0.16 },
-    colors: { text: '#f4d47c', active: '#f4d47c', accent: '#f4d47c', shadow: 'rgba(30,15,0,.45)', dim: 'rgba(25,12,0,.14)' },
+    colors: { text: '#f4d47c', active: '#f4d47c', accent: '#f4d47c', shadow: 'rgba(30,15,0,.4)', dim: 'rgba(25,12,0,.14)' },
     emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.8, align: 'center' },
     extra: { splitHero: true },
   }),
   D({
+    // Pairing E: spray-paint hero + engineered spaced caps — raw texture
+    // against order; both bold, so neither fights the other.
     id: 'inkwash', name: 'Ink Wash', category: 'behind', badge: 'NEW', tier: 'pro', behind: true,
-    font: { family: 'Inter', weight: 600, size: 0.056, transform: 'upper', letterSpacing: 0.18 },
-    accentFont: { family: '"Permanent Marker"', weight: 400, size: 0.22, transform: 'lower' },
+    font: { family: 'Inter', weight: 600, size: 0.052, transform: 'upper', letterSpacing: 0.22 },
+    accentFont: { family: '"Rubik Spray Paint"', weight: 400, size: 0.2, transform: 'lower' },
     grouping: { mode: 'lockup', maxWords: 6 },
     heroPos: { y: 0.15 },
     colors: { text: 'rgba(255,255,255,.96)', active: '#ffffff', accent: '#e63b2e', shadow: 'rgba(0,0,0,.5)', dim: 'rgba(0,0,0,.12)' },
@@ -184,11 +204,13 @@ export const PRESETS = [
 
   // ── MULTILINE (lockups) ──────────────────────────────────────────────────
   D({
+    // Pairing B: one grotesque skeleton, two weights — Archivo Black hero,
+    // light wide-tracked Inter caps for support. Weight is the only contrast.
     id: 'swiss-lockup', name: 'Swiss', category: 'multiline', badge: 'TRENDING', tier: 'creator',
-    font: { family: 'Inter', weight: 400, size: 0.062, lineHeight: 1.15 },
-    accentFont: { family: 'Archivo Black', weight: 400, size: 0.105, transform: 'upper' },
+    font: { family: 'Inter', weight: 300, size: 0.052, transform: 'upper', letterSpacing: 0.14, lineHeight: 1.3 },
+    accentFont: { family: 'Archivo Black', weight: 400, size: 0.108, transform: 'upper' },
     grouping: { mode: 'lockup', maxWords: 6 },
-    colors: { text: 'rgba(255,255,255,.9)', active: '#ffffff', accent: '#ffffff', shadow: 'rgba(0,0,0,.5)' },
+    colors: { text: 'rgba(255,255,255,.92)', active: '#ffffff', accent: '#ffffff', shadow: 'rgba(0,0,0,.5)' },
     emphasis: 'none', anim: { in: 'rise', perWord: false }, pos: { y: 0.70, align: 'center' },
   }),
   D({
@@ -208,12 +230,24 @@ export const PRESETS = [
     emphasis: 'none', anim: { in: 'rise', perWord: false }, pos: { y: 0.70, align: 'center' },
   }),
   D({
-    id: 'epic-pro', name: 'Epic Pro', category: 'multiline', tier: 'creator',
-    font: { family: 'Arial', weight: 400, size: 0.056, lineHeight: 1.18 },
-    accentFont: { family: 'Anton', weight: 400, size: 0.12, transform: 'upper' },
+    // Pairing D: condensed impact caps against a humanist text face — the
+    // width contrast does the work; both stay upright and plain.
+    id: 'epic-pro', name: 'Epic', category: 'multiline', tier: 'creator',
+    font: { family: '"Source Sans 3"', weight: 400, size: 0.056, lineHeight: 1.22 },
+    accentFont: { family: 'Anton', weight: 400, size: 0.125, transform: 'upper', letterSpacing: 0.01 },
     grouping: { mode: 'lockup', maxWords: 6 },
-    colors: { text: 'rgba(255,255,255,.9)', active: '#ffffff', accent: '#f97316', shadow: 'rgba(0,0,0,.5)' },
+    colors: { text: 'rgba(255,255,255,.92)', active: '#ffffff', accent: '#f97316', shadow: 'rgba(0,0,0,.5)' },
     emphasis: 'none', anim: { in: 'pop', perWord: false }, pos: { y: 0.70, align: 'center' },
+  }),
+  D({
+    // Pairing F: slab-serif display + condensed caps — both sturdy, the
+    // width contrast keeps them apart. Letterpress poster energy.
+    id: 'letterpress', name: 'Letterpress', category: 'multiline', badge: 'NEW', tier: 'creator',
+    font: { family: 'Oswald', weight: 500, size: 0.055, transform: 'upper', letterSpacing: 0.1, lineHeight: 1.3 },
+    accentFont: { family: '"Alfa Slab One"', weight: 400, size: 0.105 },
+    grouping: { mode: 'lockup', maxWords: 6 },
+    colors: { text: 'rgba(255,244,214,.95)', active: '#fff4d6', accent: '#fff4d6', shadow: 'rgba(40,20,0,.55)' },
+    emphasis: 'none', anim: { in: 'rise', perWord: false }, pos: { y: 0.70, align: 'center' },
   }),
 
   // ── DYNAMIC ──────────────────────────────────────────────────────────────
@@ -459,6 +493,7 @@ export const FONT_FAMILIES = [
   'Anton', 'Playfair Display:ital,wght@0,500;0,600;1,500;1,600', 'Lilita One',
   'Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,300;1,9..144,400',
   'Bodoni Moda:opsz,wght@6..96,700', 'DM Serif Display:ital@0;1', 'Space Grotesk:wght@500;700',
+  'Gloock', 'Instrument Serif:ital@0;1', 'Rubik Spray Paint', 'Alfa Slab One', 'Source Sans 3:wght@400;600',
   'Permanent Marker', 'Poppins:wght@600;800', 'Bangers', 'Abril Fatface',
   'Bebas Neue', 'Titan One', 'Space Mono:wght@700', 'Oswald:ital,wght@0,600;0,700;1,700',
   'Cormorant Garamond:ital,wght@0,600;1,600', 'Libre Caslon Text:wght@700',
