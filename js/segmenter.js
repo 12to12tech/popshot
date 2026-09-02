@@ -27,7 +27,7 @@ export async function getSegmenter() {
 export class MaskTracker {
   constructor() {
     this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     this.ready = false;
     this.failed = false;
     this._lastTs = -1;
@@ -85,6 +85,7 @@ export class MaskTracker {
         const d = this._imgData.data;
         for (let i = 0; i < data.length; i++) d[i * 4 + 3] = data[i] * 255;
         this.ctx.putImageData(this._imgData, 0, 0);
+        this.canvas._v = (this.canvas._v || 0) + 1; // revision for downstream memoization
         out = this.canvas;
         this._hasMask = true;
         mask.close();

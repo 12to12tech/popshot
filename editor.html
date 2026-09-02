@@ -226,6 +226,12 @@
           <input type="text" id="hookCustom" placeholder="Type a custom hook line…">
         </label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="hookBurn"> Burn the hook into the video as an opening title (first 2.5 s)</label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="autoEmoji"> Auto emoji on highlight words 🔥</label>
+      </div>
+      <div class="tp-block">
+        <h3>First 3 seconds</h3>
+        <p class="tp-hint">How the opening reads — the scroll-past decision happens here.</p>
+        <div id="hookReport" class="hook-report"></div>
       </div>
     </section>
 
@@ -254,6 +260,7 @@
     <div class="stage-inner">
       <div class="canvas-pills">
         <button class="cpill" id="safeBtn">Safe zone</button>
+        <button class="cpill" id="zoomBtn" title="Automatic punch-ins on keywords and new sentences">🎥 Auto-zoom</button>
         <button class="cpill cpill-hero" id="cutoutBtn">✨ Get sharper cutouts</button>
         <div class="cpill-select">
           <select id="aspectSel" aria-label="Aspect ratio">
@@ -265,34 +272,6 @@
       </div>
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="previewCanvas" width="540" height="960"></canvas>
-
-        <!-- empty state / upload overlay -->
-        <div class="stage-empty" id="stageEmpty">
-          <div class="se-card">
-            <h2>Add your clip</h2>
-            <div class="se-drop" id="dropzone">
-              <div class="se-plus">＋</div>
-              <p><strong>Drop video</strong> or click to browse</p>
-              <span>MP4 · MOV · WebM</span>
-              <input type="file" id="fileInput" accept="video/*" hidden>
-            </div>
-            <div class="se-samples" id="sampleRow">
-              <button class="btn btn-small btn-plain" data-sample="assets/demo.mp4">▶ Sample clip</button>
-            </div>
-            <div id="transcribeCard" hidden>
-              <button class="btn btn-primary" id="transcribeBtn" style="width:100%">Transcribe clip →</button>
-              <button class="tp-link" id="manualBtn" style="margin-top:8px">Or paste the transcript manually</button>
-              <div class="progress" id="transcribeProgress" hidden>
-                <div class="progress-msg" id="progressMsg"></div>
-                <div class="bar"><div class="bar-fill indeterminate"></div></div>
-              </div>
-              <div id="manualBox" hidden>
-                <textarea id="manualText" rows="4" placeholder="Paste what you say in the clip…"></textarea>
-                <button class="btn btn-primary" id="manualGo" style="width:100%">Use this transcript →</button>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div class="transport">
@@ -301,6 +280,34 @@
         <span class="t-time" id="timeCur">0:00</span>
         <input type="range" id="scrubber" min="0" max="100" value="0" step="0.01">
         <span class="t-time" id="timeDur">0:00</span>
+      </div>
+    </div>
+
+    <!-- setup overlay: sits over the whole stage, never inside the canvas -->
+    <div class="stage-empty" id="stageEmpty">
+      <div class="se-card">
+        <h2>Add your clip</h2>
+        <div class="se-drop" id="dropzone">
+          <div class="se-plus">＋</div>
+          <p><strong>Drop video</strong> or click to browse</p>
+          <span>MP4 · MOV · WebM</span>
+          <input type="file" id="fileInput" accept="video/*" hidden>
+        </div>
+        <div class="se-samples" id="sampleRow">
+          <button class="btn btn-small btn-plain" data-sample="assets/demo.mp4">▶ Sample clip</button>
+        </div>
+        <div id="transcribeCard" hidden>
+          <button class="btn btn-primary" id="transcribeBtn" style="width:100%">Transcribe clip →</button>
+          <button class="tp-link" id="manualBtn" style="margin-top:8px">Or paste the transcript manually</button>
+          <div class="progress" id="transcribeProgress" hidden>
+            <div class="progress-msg" id="progressMsg"></div>
+            <div class="bar"><div class="bar-fill indeterminate"></div></div>
+          </div>
+          <div id="manualBox" hidden>
+            <textarea id="manualText" rows="4" placeholder="Paste what you say in the clip…"></textarea>
+            <button class="btn btn-primary" id="manualGo" style="width:100%">Use this transcript →</button>
+          </div>
+        </div>
       </div>
     </div>
   </main>

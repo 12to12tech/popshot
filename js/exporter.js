@@ -64,7 +64,7 @@ async function probeMimes(w, h, key) {
 // resolves { blob, ext, mime }
 export async function exportVideo(opts) {
   const { video, groups, preset, aspect = CONFIG.export.defaultAspect, maskTracker,
-          speaker, layoutVersion, hookTitle, broll, prepFrame, onProgress, signal } = opts;
+          speaker, layoutVersion, hookTitle, broll, prepFrame, zoomFn, onProgress, signal } = opts;
   const size = CONFIG.export.sizes[aspect] || CONFIG.export.sizes['9:16'];
 
   const canvas = document.createElement('canvas');
@@ -122,7 +122,7 @@ export async function exportVideo(opts) {
       let mask = null;
       if (preset.behind && maskTracker?.ready) mask = maskTracker.update(video, performance.now());
       prepFrame?.(t);
-      drawFrame(ctx, video, t, groups, preset, { mask, scratch, speaker, layoutVersion, hookTitle, broll });
+      drawFrame(ctx, video, t, groups, preset, { mask, scratch, speaker, layoutVersion, hookTitle, broll, zoom: zoomFn?.(t) || 1 });
       onProgress?.(Math.min(1, t / duration));
       if (video.ended || t >= duration - 0.03) finish();
     } finally {

@@ -32,6 +32,8 @@ const state = {
   aspect: '9:16',
   hook: '',
   hookBurn: false,
+  autoZoom: false,
+  autoEmoji: false,
   showSafe: false,
   speakers: false,
   speaker: { name: '', role: '' },
@@ -154,6 +156,7 @@ function buildEff() {
   }
   if (o.text) eff.colors.text = o.text;
   if (o.active) { eff.colors.active = o.active; if (p.colors.accent) eff.colors.accent = o.active; }
+  if (state.autoEmoji) eff.extra.autoEmoji = true;
   state.styleVersion++;
   state.eff = eff;
 }
@@ -164,7 +167,41 @@ function rebuildGroups() {
   // exactly these (and nothing else) behind the speaker
   markKeywords(state.words, video.duration || 0);
   state.groups = groupWords(state.words, state.eff);
+  buildZoomPlan();
   markDirty();
+}
+
+// ── Auto-zoom ──────────────────────────────────────────────────────────────
+// Punch-ins where an editor would put them: on keywords, and at the start of
+// a sentence that follows a real pause. Spaced out and capped — constant
+// zooming reads as cheap, a few well-placed pushes read as energy.
+let zoomPlan = [];
+function buildZoomPlan() {
+  const live = state.words.filter(w => !w.deleted);
+  const candidates = [];
+  live.forEach((w, i) => {
+    const gap = i === 0 ? Infinity : w.start - live[i - 1].end;
+    const sentenceStart = i === 0 || gap >= 0.5 || /[.!?]$/.test(live[i - 1]?.text ?? '');
+    if (w.key) candidates.push({ at: w.start, weight: 2 });
+    else if (sentenceStart) candidates.push({ at: w.start, weight: 1 });
+  });
+  const plan = [];
+  for (const c of candidates.sort((a, b) => b.weight - a.weight || a.at - b.at)) {
+    if (plan.some(z => Math.abs(z.start - c.at) < 3.5)) continue;
+    plan.push({ start: Math.max(0, c.at - 0.12), end: c.at + 1.6, amount: c.weight === 2 ? 0.12 : 0.08 });
+    if (plan.length >= 12) break;
+  }
+  zoomPlan = plan.sort((a, b) => a.start - b.start);
+}
+function zoomAt(t) {
+  if (!state.autoZoom) return 1;
+  const RAMP = 0.5;
+  let z = 1;
+  for (const w of zoomPlan) {
+    if (t < w.start || t > w.end) continue;
+    z += w.amount * Math.min(1, (t - w.start) / RAMP) * Math.min(1, (w.end - t) / RAMP);
+  }
+  return z;
 }
 
 // ── Tool rail ──────────────────────────────────────────────────────────────
@@ -176,7 +213,7 @@ function setTool(tool) {
   if (tool === 'templates') renderStyleGrid();
   if (tool === 'transcript') renderTranscript();
   if (tool === 'thumbnail') scheduleConcepts();
-  if (tool === 'title') renderHooks();
+  if (tool === 'title') { renderHooks(); renderHookReport(); }
   if (tool === 'broll') renderBrollList();
 }
 $('rail').addEventListener('click', (e) => {
@@ -599,11 +636,20 @@ const sampleSource = makeSampleSource();
 const templateFrame = document.createElement('canvas');
 templateFrame.width = 270; templateFrame.height = 480;
 let templateFrameReady = false;
+let templateFrameVersion = 0;
+let lastCaptureAt = 0;
+const cardCache = new Map(); // `${preset.id}|${frameVersion}|${wordsSig}` -> canvas
 
 function captureTemplateFrame() {
   if (!video.src || video.readyState < 2) return;
+  // recapturing on every seek re-rendered the whole grid each time — throttle
+  // hard: a fresh frame at most every 5s, and only while templates are open
+  const now = performance.now();
+  if (templateFrameReady && (now - lastCaptureAt < 5000 || state.tool !== 'templates')) return;
+  lastCaptureAt = now;
   drawCoverInto(templateFrame, video);
   templateFrameReady = true;
+  templateFrameVersion++;
   if (state.tool === 'templates') renderStyleGrid();
 }
 function drawCoverInto(cv, source) {
@@ -686,6 +732,7 @@ async function renderStyleGrid() {
   if (token !== styleGridSeq) return;
   const list = activeCat === 'foryou' ? forYouPresets() : presetsForCategory(activeCat);
   if (!list.length) { grid.innerHTML = '<p class="tp-hint">Pick a few styles and they will show up here.</p>'; return; }
+  const pending = [];
   for (const p of list) {
     const card = document.createElement('div');
     card.className = 'style-card' + (p.id === state.preset.id ? ' selected' : '');
@@ -699,8 +746,26 @@ async function renderStyleGrid() {
     label.innerHTML = `<span>${p.name}</span><span class="style-tier">${p.tier.toUpperCase()}</span>`;
     card.appendChild(label);
     grid.appendChild(card);
-    drawPresetSample(cv, p);
+    // cached bitmaps blit instantly; misses render in small rAF batches so
+    // opening the panel or switching tabs never freezes the UI
+    const key = `${p.id}|f${templateFrameVersion}`;
+    const cached = cardCache.get(key);
+    if (cached) cv.getContext('2d').drawImage(cached, 0, 0);
+    else pending.push({ cv, p, key });
   }
+  const renderChunk = () => {
+    if (token !== styleGridSeq) return;
+    for (const job of pending.splice(0, 3)) {
+      drawPresetSample(job.cv, job.p);
+      const copy = document.createElement('canvas');
+      copy.width = 270; copy.height = 480;
+      copy.getContext('2d').drawImage(job.cv, 0, 0);
+      cardCache.set(job.key, copy);
+      if (cardCache.size > 120) cardCache.delete(cardCache.keys().next().value);
+    }
+    if (pending.length) requestAnimationFrame(renderChunk);
+  };
+  requestAnimationFrame(renderChunk); // let the tab switch paint before any card renders
 }
 
 function syntheticMask() {
@@ -989,6 +1054,14 @@ $('safeBtn').addEventListener('click', () => {
   $('safeBtn').classList.toggle('on', state.showSafe);
   markDirty();
 });
+$('zoomBtn').addEventListener('click', () => {
+  state.autoZoom = !state.autoZoom;
+  $('zoomBtn').classList.toggle('on', state.autoZoom);
+  markDirty();
+  toast(state.autoZoom
+    ? `Auto-zoom on — ${zoomPlan.length} punch-ins planned on keywords and fresh sentences 🎥`
+    : 'Auto-zoom off');
+});
 $('cutoutBtn').addEventListener('click', async () => {
   if (!state.eff.behind) return toast('Sharper cutouts apply to Behind-the-Person styles — pick one in Templates.');
   if (!maskTracker) { maskTracker = new MaskTracker(); await maskTracker.init(); }
@@ -1162,6 +1235,41 @@ $('hookBurn').addEventListener('change', (e) => {
   markDirty();
   if (state.hookBurn) { video.currentTime = 0.4; toast('Hook title will show for the first 2.5 s'); }
 });
+$('autoEmoji').addEventListener('change', (e) => {
+  state.autoEmoji = e.target.checked;
+  buildEff();          // bumps the layout version so cached geometry refreshes
+  rebuildGroups();
+  toast(state.autoEmoji ? 'Highlight words get an emoji 🔥' : 'Emoji off');
+});
+
+// How the opening reads — each finding names something fixable. The scroll
+// decision happens in the first three seconds, so this is the panel that
+// most affects whether a short travels.
+function renderHookReport() {
+  const box = $('hookReport');
+  const live = state.words.filter(w => !w.deleted);
+  if (!live.length) { box.innerHTML = ''; return; }
+  const opening = live.filter(w => w.start < 3);
+  const findings = [];
+  let score = 100;
+  if (!opening.length) {
+    box.innerHTML = `<div class="hr-score bad">0</div><div class="hr-item bad">Nothing is said before the viewer decides to scroll. Cut straight to the first line.</div>`;
+    return;
+  }
+  const text = opening.map(w => w.text).join(' ');
+  if (opening.length < 5) { score -= 25; findings.push(['warn', `Only ${opening.length} words in three seconds — a hook usually needs 6–10. Trim the run-up.`]); }
+  if (opening.length / 3 > 4.5) { score -= 10; findings.push(['warn', 'Very fast delivery — the opening may not land. Leave a beat after the first line.']); }
+  if (/^(so|um|uh|ok|okay|hi|hey|hello|guys|yeah|right|basically|actually|तो|अच्छा|हाँ|नमस्ते)\b/i.test(opening[0].text)) {
+    score -= 20; findings.push(['bad', `Opens on “${opening[0].text}” — a throwaway word. Start on the claim instead.`]);
+  }
+  if (live[0].start > 0.8) { score -= 15; findings.push(['warn', `${live[0].start.toFixed(1)}s of silence before the first word. Trim the lead-in (cut the words, the captions follow).`]); }
+  if (!/\?/.test(text) && !/\d/.test(text)) { score -= 10; findings.push(['tip', 'No question and no number in the opening — both give a viewer a reason to stay.']); }
+  if (!findings.length) findings.push(['good', 'Opens quickly and with substance. Nothing to fix.']);
+  score = Math.max(0, Math.min(100, score));
+  const cls = score >= 80 ? 'good' : score >= 55 ? 'warn' : 'bad';
+  box.innerHTML = `<div class="hr-score ${cls}">${score}<span>/100</span></div>` +
+    findings.map(([lvl, t]) => `<div class="hr-item ${lvl}">${escapeHtml(t)}</div>`).join('');
+}
 
 // ── Thumbnails ─────────────────────────────────────────────────────────────
 const thumbVideo = document.createElement('video');
@@ -1283,19 +1391,20 @@ function drawSafeArea() {
   ctx.restore();
 }
 
-function frameOpts() {
+function frameOpts(t) {
   return {
     scratch,
     speaker: state.speaker,
     layoutVersion: state.styleVersion,
     hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
     broll: state.broll,
+    zoom: zoomAt(t ?? video.currentTime),
   };
 }
 
 function drawPreview() {
   const t = video.currentTime;
-  const opts = frameOpts();
+  const opts = frameOpts(t);
   if (state.eff.behind && maskTracker?.ready) opts.mask = maskTracker.update(video, performance.now());
   const res = drawFrame(ctx, video, t, state.groups, state.eff, opts);
   lastBounds = res?.bounds || null;
@@ -1411,6 +1520,7 @@ $('exportBtn').addEventListener('click', async () => {
       layoutVersion: state.styleVersion,
       hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
       broll: state.broll,
+      zoomFn: zoomAt,
       prepFrame: (t) => syncBroll(t, true),
       signal: abortCtl.signal,
       onProgress: (p) => {

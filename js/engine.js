@@ -19,10 +19,13 @@ export function groupWords(words, preset) {
   const groups = [];
   let cur = null;
 
+  const maxChars = preset.grouping.maxChars || Math.max(18, maxWords * 7);
   for (const w of live) {
+    const curChars = cur ? cur.words.reduce((n, x) => n + x.text.length + 1, 0) : 0;
     const startNew =
       !cur ||
       cur.words.length >= maxWords ||
+      curChars + w.text.length > maxChars ||   // char budget: four long words ≠ four short ones
       (w.start - cur.end) > maxGap ||
       // split-layer styles: a keyword opens its own group, so the hero stands
       // alone and the front line reads as a clean phrase after it
@@ -70,6 +73,22 @@ function applyTransform(text, f) {
   if (f.transform === 'upper') return text.toUpperCase();
   if (f.transform === 'lower') return text.toLowerCase();
   return text;
+}
+
+// Optional emoji riding on keyword words (extra.autoEmoji). Appended to the
+// text so it measures, wraps and animates like any other glyph.
+function emojiFor(text) {
+  const b = text.toLowerCase();
+  if (/\d/.test(b)) return '📈';
+  if (/(money|paisa|profit|sales|price|crore|lakh|free)/.test(b)) return '💰';
+  if (/(stop|never|wrong|mistake|warning|danger|sorry)/.test(b)) return '🚨';
+  if (/(secret|truth|hidden|real)/.test(b)) return '👀';
+  if (/(love|dil|heart|pyaar)/.test(b)) return '❤️';
+  return '🔥';
+}
+function wordText(w, f, preset) {
+  const base = applyTransform(w.text, f);
+  return (preset.extra?.autoEmoji && w.key) ? `${base} ${emojiFor(w.text)}` : base;
 }
 
 // ── Layout ─────────────────────────────────────────────────────────────────
@@ -135,7 +154,7 @@ function layoutGroup(ctx, group, preset, W, H) {
       const lh = (lf.size || 0.06) * W * (lf.lineHeight || f.lineHeight || 1.1);
       let lw = 0;
       const items = line.words.map(w => {
-        const txt = applyTransform(w.text, lf);
+        const txt = wordText(w, lf, preset);
         const wd = ctx.measureText(txt).width + (lf.letterSpacing ? txt.length * lf.letterSpacing * (lf.size * W) : 0);
         lw += wd + sw;
         return { w, txt, wd, hero: line.hero };
@@ -199,7 +218,7 @@ function layoutGroup(ctx, group, preset, W, H) {
     const wf = w === keyWord && preset.accentFont ? preset.accentFont : f;
     ctx.font = fontString(wf, W);
     const sw = spaceW();  // gap after this word, measured in this word's own font
-    const txt = applyTransform(w.text, wf);
+    const txt = wordText(w, wf, preset);
     const wd = ctx.measureText(txt).width + (wf.letterSpacing ? txt.length * wf.letterSpacing * (wf.size * W) : 0);
     let line = lines[lines.length - 1];
     const prev = line.items[line.items.length - 1];
@@ -394,9 +413,10 @@ function roundRect(ctx, x, y, w, h, r) {
 // so the editor can hit-test for direct manipulation.
 export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   const W = ctx.canvas.width, H = ctx.canvas.height;
+  const zoom = opts.zoom || 1;
 
   // 1. video frame, cover-cropped into the output aspect
-  drawCover(ctx, source, W, H);
+  drawCover(ctx, source, W, H, zoom);
 
   // b-roll cutaway covers the video (captions still render on top of it)
   let brollActive = false;
@@ -460,11 +480,11 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
     const tmp = opts.scratch;
     const tc = tmp.getContext('2d');
     tc.clearRect(0, 0, W, H);
-    drawCover(tc, source, W, H);
+    drawCover(tc, source, W, H, zoom);
     tc.globalCompositeOperation = 'destination-in';
     // the mask shares the video's aspect — it must go through the same
-    // cover-crop transform, or cutouts misalign on non-portrait sources
-    drawCover(tc, opts.mask, W, H);
+    // cover-crop transform (including zoom), or cutouts misalign
+    drawCover(tc, opts.mask, W, H, zoom);
     tc.globalCompositeOperation = 'source-over';
     ctx.drawImage(tmp, 0, 0);
     ctx.restore();
@@ -533,7 +553,19 @@ function drawHookTitle(ctx, t, preset, opts, W, H) {
 // visible. On tight close-ups where the speaker fills every cell, the caller
 // also gets the coverage so it can shrink the hero — partial occlusion reads
 // as depth, a buried word reads as a mistake.
+const heroSpotMemo = new WeakMap(); // mask canvas -> { v, byY: Map }
 function heroSpot(mask, fallbackY) {
+  // sampling 18 grid cells costs getImageData calls — memoize per mask
+  // revision so template cards and successive groups reuse one scan
+  const rev = mask._v || 0;
+  let memo = heroSpotMemo.get(mask);
+  if (!memo || memo.v !== rev) { memo = { v: rev, byY: new Map() }; heroSpotMemo.set(mask, memo); }
+  if (memo.byY.has(fallbackY)) return memo.byY.get(fallbackY);
+  const out = heroSpotScan(mask, fallbackY);
+  memo.byY.set(fallbackY, out);
+  return out;
+}
+function heroSpotScan(mask, fallbackY) {
   try {
     const mw = mask.width, mh = mask.height;
     if (!mw || !mh) return { y: fallbackY, x: null, cov: 0 };
@@ -564,10 +596,10 @@ function heroSpot(mask, fallbackY) {
   }
 }
 
-export function drawCover(ctx, source, W, H) {
+export function drawCover(ctx, source, W, H, zoom = 1) {
   const sw = source.videoWidth || source.width, sh = source.videoHeight || source.height;
   if (!sw || !sh) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); return; }
-  const s = Math.max(W / sw, H / sh);
+  const s = Math.max(W / sw, H / sh) * zoom;
   const dw = sw * s, dh = sh * s;
   ctx.drawImage(source, (W - dw) / 2, (H - dh) / 2, dw, dh);
 }

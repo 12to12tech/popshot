@@ -241,6 +241,24 @@ body {
 .hook-item.selected { border-color: var(--brand); background: var(--brand-soft); }
 .hook-item .score { float: right; color: var(--muted); font: 700 9px "JetBrains Mono", monospace; margin-top: 2px; }
 
+/* hook report */
+.hook-report { display: flex; flex-direction: column; gap: 6px; }
+.hr-score {
+  font: 900 30px Inter; letter-spacing: -1px; margin-bottom: 4px;
+}
+.hr-score span { font: 700 13px Inter; color: var(--muted); }
+.hr-score.good { color: #15803d; }
+.hr-score.warn { color: #b45309; }
+.hr-score.bad { color: #b3261e; }
+.hr-item {
+  font: 500 12px Inter; line-height: 1.5; padding: 8px 10px; border-radius: 8px;
+  border-left: 3px solid var(--line2); background: var(--bg);
+}
+.hr-item.good { border-left-color: #15803d; }
+.hr-item.tip { border-left-color: var(--brand); }
+.hr-item.warn { border-left-color: #b45309; }
+.hr-item.bad { border-left-color: #b3261e; }
+
 /* ── Stage ───────────────────────────────────────────────── */
 .stage { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 14px; overflow: hidden; }
 .stage-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; max-height: 100%; }
@@ -271,13 +289,18 @@ body {
   appearance: none; -webkit-appearance: none; text-align: center;
 }
 
-/* empty state */
+/* setup overlay — covers the whole stage, sized independently of the canvas */
+.stage { position: relative; }
 .stage-empty {
-  position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(170deg, #23203a, #17151f);
-  overflow-y: auto; padding: 14px;
+  position: absolute; inset: 0; z-index: 6;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(24,22,34,.55); backdrop-filter: blur(4px);
+  overflow-y: auto; padding: 18px;
 }
-.se-card { width: min(320px, 92%); background: var(--bg2); border-radius: 16px; padding: 18px; }
+.se-card {
+  width: min(360px, 94vw); background: var(--bg2); border-radius: 18px; padding: 20px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.35);
+}
 .se-card h2 { font-size: 18px; margin-bottom: 12px; letter-spacing: -0.4px; }
 .se-drop {
   border: 2px dashed var(--line2); border-radius: 12px; padding: 24px 12px; text-align: center;
