@@ -74,9 +74,15 @@ export async function localAsrModel() {
   return localAsr;
 }
 
-async function transcribeLocal(file, language, onProgress) {
-  onProgress?.('Transcribing on this machine (Metal-accelerated)…');
-  const res = await fetch('/transcribe' + (language ? `?lang=${language}` : ''), {
+async function transcribeLocal(file, language, onProgress, quality) {
+  onProgress?.(quality === 'best'
+    ? 'Transcribing with the full large-v3 model (sharpest, a bit slower)…'
+    : 'Transcribing on this machine (Metal-accelerated)…');
+  const params = new URLSearchParams();
+  if (language) params.set('lang', language);
+  if (quality) params.set('quality', quality);
+  const qs = params.toString();
+  const res = await fetch('/transcribe' + (qs ? `?${qs}` : ''), {
     method: 'POST',
     body: file,
   });
@@ -88,10 +94,10 @@ async function transcribeLocal(file, language, onProgress) {
 // → [{ text, start, end, deleted:false }]
 // `language` (ISO code like 'hi') hints multilingual models; English-only
 // models ignore it.
-export async function transcribeFile(file, { model = CONFIG.transcription.defaultModel, language = '', onProgress } = {}) {
+export async function transcribeFile(file, { model = CONFIG.transcription.defaultModel, language = '', quality = 'fast', onProgress } = {}) {
   if (model === 'local' || (model !== 'fast' && model !== 'balanced' && await localAsrModel())) {
     try {
-      const words = await transcribeLocal(file, language, onProgress);
+      const words = await transcribeLocal(file, language, onProgress, quality);
       if (words.length) return words;
     } catch (e) {
       console.warn('local ASR failed, falling back to in-browser whisper', e);

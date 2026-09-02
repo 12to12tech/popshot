@@ -318,6 +318,13 @@
           </select>
           <small>Runs in your browser — nothing is uploaded.</small>
         </label>
+        <label class="tp-field" id="accRow" hidden><span>Local model accuracy</span>
+          <select id="accSel">
+            <option value="best" selected>Best — full large-v3 (sharpest, default)</option>
+            <option value="fast">Fast — large-v3-turbo</option>
+          </select>
+          <small>Best is the strongest choice for mixed Hindi–English speech.</small>
+        </label>
         <p class="tp-hint" id="aiStatus">AI highlight picking: checking…</p>
       </div>
       <div class="tp-block">

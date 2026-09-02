@@ -370,6 +370,7 @@ localAsrModel().then(name => {
   opt.textContent = `Local · ${name} (this machine, fastest)`;
   $('modelSel').prepend(opt);
   $('modelSel').value = 'local';
+  $('accRow').hidden = false;
 }).catch(() => {});
 
 // AI highlight-picking availability (DeepSeek via the local server)
@@ -396,6 +397,7 @@ async function runTranscription({ silent = false } = {}) {
     let words = await transcribeFile(state.file, {
       model: $('modelSel').value,
       language: $('langSel').value,
+      quality: $('accSel').value,
       onProgress: (m) => { if (silent) toast(m, 2500); else msg.textContent = m; },
     });
     if (!words.length) {
@@ -1546,6 +1548,7 @@ async function runBulkTranscription() {
         item.words = await transcribeFile(item.file, {
           model: $('modelSel').value,
           language: $('langSel').value,
+          quality: $('accSel').value,
           onProgress: () => {},
         });
         item.status = item.words.length ? 'ready' : 'error';

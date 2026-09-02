@@ -75,13 +75,18 @@ MODEL_CANDIDATES = [
     os.path.expanduser('~/whisper-models/ggml-large-v3-q5_0.bin'),
     os.path.expanduser('~/whisper-models/ggml-small.en.bin'),
 ]
+# "best" trades speed for the full large-v3 decoder — noticeably better on
+# code-switched Hinglish, where turbo invents English words for Hindi sounds
+BEST_MODEL = os.path.expanduser('~/whisper-models/ggml-large-v3-q5_0.bin')
+VAD_MODEL = os.path.expanduser('~/whisper-models/ggml-silero-v5.1.2.bin')
 WHISPER_CLI = shutil.which('whisper-cli')
 FFMPEG = shutil.which('ffmpeg')
 MODEL = next((m for m in MODEL_CANDIDATES if os.path.exists(m)), None)
 LOCAL_ASR = bool(WHISPER_CLI and FFMPEG and MODEL)
 
 
-def transcribe(media_bytes, lang):
+def transcribe(media_bytes, lang, quality='fast'):
+    model = BEST_MODEL if quality == 'best' and os.path.exists(BEST_MODEL) else MODEL
     with tempfile.TemporaryDirectory() as td:
         src = os.path.join(td, 'input.bin')
         wav = os.path.join(td, 'audio.wav')
@@ -91,13 +96,22 @@ def transcribe(media_bytes, lang):
         subprocess.run([FFMPEG, '-y', '-v', 'error', '-i', src,
                         '-ar', '16000', '-ac', '1', wav],
                        check=True, timeout=300)
-        cmd = [WHISPER_CLI, '-m', MODEL, '-f', wav,
+        cmd = [WHISPER_CLI, '-m', model, '-f', wav,
                '-ml', '1', '-sow',          # one word per segment
                '-oj', '-of', out,
                '-t', str(max(2, (os.cpu_count() or 4) - 2)),
                '-l', lang or 'auto']
-        subprocess.run(cmd, check=True, timeout=1800,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Silero VAD suppresses the hallucinated words that show up in
+        # silences — a common source of nonsense tokens
+        vad = ['--vad', '-vm', VAD_MODEL] if os.path.exists(VAD_MODEL) else []
+        try:
+            subprocess.run(cmd + vad, check=True, timeout=1800,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            if not vad:
+                raise
+            subprocess.run(cmd, check=True, timeout=1800,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         with open(out + '.json') as f:
             data = json.load(f)
     words = []
@@ -202,13 +216,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if length <= 0 or length > 2_000_000_000:
                 return self._json(400, {'error': 'bad length'})
             body = self.rfile.read(length)
-            lang = ''
+            lang, quality = '', 'fast'
             if '?' in self.path:
                 for kv in self.path.split('?', 1)[1].split('&'):
                     if kv.startswith('lang='):
                         lang = kv[5:][:8]
-            words = transcribe(body, lang)
-            return self._json(200, {'words': words, 'model': os.path.basename(MODEL)})
+                    elif kv.startswith('quality='):
+                        quality = kv[8:][:8]
+            words = transcribe(body, lang, quality)
+            model = BEST_MODEL if quality == 'best' and os.path.exists(BEST_MODEL) else MODEL
+            return self._json(200, {'words': words, 'model': os.path.basename(model)})
         except subprocess.CalledProcessError as e:
             return self._json(500, {'error': f'transcription failed ({e})'})
         except Exception as e:  # noqa: BLE001 — surface anything to the client
