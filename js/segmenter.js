@@ -51,6 +51,11 @@ export class MaskTracker {
   }
 
   // returns the mask canvas (person = opaque white) or null
+  // Perf: segmentation runs on a downscaled copy of the frame (≤320px wide) —
+  // the model resizes internally anyway, and a small mask means the per-pixel
+  // alpha write is ~5× cheaper. Upscaling the mask with smoothing also gives a
+  // softer cutout edge. The ImageData buffer is allocated once with RGB
+  // prefilled, so each frame only touches the alpha channel.
   update(video, tMs) {
     if (!this.ready) return null;
     // throttle: reuse the previous mask between runs
@@ -58,23 +63,28 @@ export class MaskTracker {
     this._lastRun = tMs;
     if (tMs <= this._lastTs) tMs = this._lastTs + 1; // MediaPipe needs monotonic timestamps
     this._lastTs = tMs;
-    const w = video.videoWidth, h = video.videoHeight;
-    if (!w || !h) return null;
-    if (this.canvas.width !== w) { this.canvas.width = w; this.canvas.height = h; }
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    const w = Math.min(320, vw);
+    const h = Math.round(vh * (w / vw));
+    if (!this.inCanvas) { this.inCanvas = document.createElement('canvas'); this.inCtx = this.inCanvas.getContext('2d', { willReadFrequently: false }); }
+    if (this.inCanvas.width !== w || this.inCanvas.height !== h) { this.inCanvas.width = w; this.inCanvas.height = h; this._imgData = null; }
+    if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; this._imgData = null; }
+    this.inCtx.drawImage(video, 0, 0, w, h);
     let out = null;
     try {
-      const res = this.segmenter.segmentForVideo(video, tMs);
+      const res = this.segmenter.segmentForVideo(this.inCanvas, tMs);
       const mask = res.confidenceMasks?.[0];
       if (mask) {
         const data = mask.getAsFloat32Array();
-        const img = this.ctx.createImageData(w, h);
-        for (let i = 0; i < data.length; i++) {
-          const a = Math.min(255, Math.max(0, data[i] * 255));
-          const o = i * 4;
-          img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255;
-          img.data[o + 3] = a;
+        if (!this._imgData || this._imgData.data.length !== data.length * 4) {
+          this._imgData = this.ctx.createImageData(w, h);
+          const d = this._imgData.data;
+          for (let i = 0; i < d.length; i += 4) { d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; }
         }
-        this.ctx.putImageData(img, 0, 0);
+        const d = this._imgData.data;
+        for (let i = 0; i < data.length; i++) d[i * 4 + 3] = data[i] * 255;
+        this.ctx.putImageData(this._imgData, 0, 0);
         out = this.canvas;
         this._hasMask = true;
         mask.close();

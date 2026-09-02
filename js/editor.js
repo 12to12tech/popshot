@@ -50,7 +50,8 @@ let maskTracker = null;
 let exporting = false;
 let needsDraw = true;
 let timeline = null;
-let lastBounds = null;    // caption block bounds from the last engine draw
+let lastBounds = null;      // front caption block bounds from the last engine draw
+let lastHeroBounds = null;  // behind-hero block bounds (split-layer styles)
 
 const markDirty = () => { needsDraw = true; timeline?.markDirty(); };
 
@@ -135,12 +136,15 @@ function buildEff() {
     grouping: { ...p.grouping },
     colors: { ...p.colors },
     pos: { ...p.pos },
+    heroPos: p.heroPos ? { ...p.heroPos } : { y: 0.18 },
     anim: { ...p.anim },
     extra: { ...p.extra },
   };
   if (o.size) { eff.font.size *= o.size; if (eff.accentFont) eff.accentFont.size *= o.size; }
   if (o.posY != null) eff.pos.y = o.posY;
   if (o.posX != null) eff.pos.x = o.posX;
+  if (o.heroPosY != null) eff.heroPos.y = o.heroPosY;
+  if (o.heroPosX != null) eff.heroPos.x = o.heroPosX;
   if (o.maxWords) eff.grouping.maxWords = o.maxWords;
   if (o.caseMode !== undefined && o.caseMode !== null) {
     const t = o.caseMode === 'none' ? null : o.caseMode;
@@ -567,6 +571,54 @@ document.addEventListener('keydown', (e) => {
 let activeCat = 'popular';
 const sampleSource = makeSampleSource();
 
+// Live previews: once a clip is loaded, template cards render on an actual
+// frame of the user's video with their own first words — like the product's
+// gallery — falling back to the synthetic sample before upload.
+const templateFrame = document.createElement('canvas');
+templateFrame.width = 270; templateFrame.height = 480;
+let templateFrameReady = false;
+
+function captureTemplateFrame() {
+  if (!video.src || video.readyState < 2) return;
+  drawCoverInto(templateFrame, video);
+  templateFrameReady = true;
+  if (state.tool === 'templates') renderStyleGrid();
+}
+function drawCoverInto(cv, source) {
+  const c = cv.getContext('2d');
+  const sw = source.videoWidth, sh = source.videoHeight;
+  if (!sw) return;
+  const s = Math.max(cv.width / sw, cv.height / sh);
+  c.drawImage(source, (cv.width - sw * s) / 2, (cv.height - sh * s) / 2, sw * s, sh * s);
+}
+// capture whenever a seek settles on a fresh frame (cheap, replaces the still)
+video.addEventListener('seeked', () => { if (!exporting) captureTemplateFrame(); });
+
+function sampleWordsForCards() {
+  const live = state.words.filter(w => !w.deleted).slice(0, 4);
+  if (live.length < 3) return SAMPLE_WORDS;
+  const t0 = live[0].start;
+  return live.map(w => ({ text: w.text.replace(/[.,!?"]+$/, ''), start: w.start - t0, end: w.end - t0, deleted: false }));
+}
+
+// "For you": recent picks + a few related styles from the same categories
+const RECENTS_KEY = 'popshot-recent-styles';
+function getRecents() {
+  try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); } catch { return []; }
+}
+function rememberStyle(id) {
+  try {
+    const r = [id, ...getRecents().filter(x => x !== id)].slice(0, 6);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(r));
+  } catch { /* private mode */ }
+}
+function forYouPresets() {
+  const recents = getRecents().map(getPreset).filter(Boolean);
+  const cats = [...new Set(recents.map(p => p.category))];
+  const related = cats.flatMap(c => presetsForCategory(c)).filter(p => !recents.some(r => r.id === p.id)).slice(0, 4);
+  return [...recents, ...related];
+}
+
 function makeSampleSource() {
   const c = document.createElement('canvas');
   c.width = 270; c.height = 480;
@@ -586,7 +638,8 @@ const SAMPLE_WORDS = [
 ];
 
 function renderCatTabs() {
-  $('catTabs').innerHTML = CATEGORIES.map(c =>
+  const tabs = [{ id: 'foryou', name: 'For you', ai: false }, ...CATEGORIES];
+  $('catTabs').innerHTML = tabs.map(c =>
     `<button class="cat-tab ${c.id === activeCat ? 'active' : ''}" data-cat="${c.id}">${c.name}${c.ai ? ' <span class="ai">AI</span>' : ''}</button>`
   ).join('');
 }
@@ -597,14 +650,21 @@ $('catTabs').addEventListener('click', (e) => {
   renderStyleGrid();
 });
 
+let styleGridSeq = 0;
 async function renderStyleGrid() {
+  const token = ++styleGridSeq;
   renderCatTabs();
-  const cat = CATEGORIES.find(c => c.id === activeCat);
+  const cat = activeCat === 'foryou'
+    ? { desc: 'Your recent picks, plus a few related styles.' }
+    : CATEGORIES.find(c => c.id === activeCat);
   $('catDesc').textContent = cat?.desc || '';
   const grid = $('styleGrid');
   grid.innerHTML = '';
   await document.fonts.ready;
-  for (const p of presetsForCategory(activeCat)) {
+  if (token !== styleGridSeq) return;
+  const list = activeCat === 'foryou' ? forYouPresets() : presetsForCategory(activeCat);
+  if (!list.length) { grid.innerHTML = '<p class="tp-hint">Pick a few styles and they will show up here.</p>'; return; }
+  for (const p of list) {
     const card = document.createElement('div');
     card.className = 'style-card' + (p.id === state.preset.id ? ' selected' : '');
     card.dataset.id = p.id;
@@ -621,21 +681,31 @@ async function renderStyleGrid() {
   }
 }
 
+function syntheticMask() {
+  const mask = document.createElement('canvas');
+  mask.width = 270; mask.height = 480;
+  const m = mask.getContext('2d');
+  m.fillStyle = '#fff';
+  m.beginPath(); m.arc(135, 250, 52, 0, Math.PI * 2); m.fill();
+  m.beginPath(); m.ellipse(135, 420, 95, 130, 0, Math.PI, 0); m.fill();
+  return mask;
+}
+
 function drawPresetSample(cv, preset) {
   const c = cv.getContext('2d');
-  const groups = groupWords(SAMPLE_WORDS, preset);
+  const useReal = templateFrameReady;
+  const words = useReal ? sampleWordsForCards() : SAMPLE_WORDS;
+  const groups = groupWords(words, preset);
   const sc = document.createElement('canvas');
   sc.width = cv.width; sc.height = cv.height;
   let mask = null;
   if (preset.behind) {
-    mask = document.createElement('canvas');
-    mask.width = 270; mask.height = 480;
-    const m = mask.getContext('2d');
-    m.fillStyle = '#fff';
-    m.beginPath(); m.arc(135, 250, 52, 0, Math.PI * 2); m.fill();
-    m.beginPath(); m.ellipse(135, 420, 95, 130, 0, Math.PI, 0); m.fill();
+    // prefer the segmenter's latest real mask; fall back to the silhouette
+    mask = (useReal && maskTracker?.ready && maskTracker._hasMask) ? maskTracker.canvas : syntheticMask();
   }
-  drawFrame(c, sampleSource, 0.95, groups, preset, { mask, scratch: sc, speaker: { name: 'Neha Sharma', role: 'Founder' } });
+  const source = useReal ? templateFrame : sampleSource;
+  const t = Math.min(0.95, (groups[0]?.end ?? 1) - 0.05);
+  drawFrame(c, source, t, groups, preset, { mask, scratch: sc, speaker: { name: 'Neha Sharma', role: 'Founder' } });
 }
 
 $('styleGrid').addEventListener('click', (e) => {
@@ -651,7 +721,9 @@ async function selectPreset(id) {
   buildEff();
   rebuildGroups();
   syncFineTune();
+  rememberStyle(state.preset.id);
   $('speakerCard').hidden = !state.preset.extra.lowerThird;
+  $('ftHeroRow').hidden = !state.preset.extra.splitHero;
   if (state.preset.behind && !maskTracker) {
     maskTracker = new MaskTracker();
     toast('Loading person-segmentation model for behind-the-subject captions…');
@@ -675,6 +747,8 @@ function syncFineTune() {
   $('ftSizeVal').textContent = Math.round((o.size || 1) * 100) + '%';
   $('ftPos').value = Math.round((o.posY ?? p.pos.y) * 100);
   $('ftPosVal').textContent = o.posY != null ? Math.round(o.posY * 100) + '%' : 'auto';
+  $('ftHero').value = Math.round((o.heroPosY ?? p.heroPos?.y ?? 0.18) * 100);
+  $('ftHeroVal').textContent = o.heroPosY != null ? Math.round(o.heroPosY * 100) + '%' : 'auto';
   $('ftWords').value = o.maxWords || p.grouping.maxWords;
   $('ftWordsVal').textContent = o.maxWords || 'auto';
   $('ftCase').value = o.caseMode ?? '';
@@ -691,6 +765,11 @@ $('ftSize').addEventListener('input', (e) => {
 $('ftPos').addEventListener('input', (e) => {
   state.overrides.posY = e.target.value / 100;
   $('ftPosVal').textContent = e.target.value + '%';
+  applyFineTune();
+});
+$('ftHero').addEventListener('input', (e) => {
+  state.overrides.heroPosY = e.target.value / 100;
+  $('ftHeroVal').textContent = e.target.value + '%';
   applyFineTune();
 });
 $('ftWords').addEventListener('input', (e) => {
@@ -723,23 +802,34 @@ function canvasPoint(e) {
     y: (e.clientY - r.top) * (canvas.height / r.height),
   };
 }
+// Two independently draggable blocks: the front caption block and — for
+// split-layer styles — the hero word behind the speaker. Behind styles that
+// aren't split still drag as one 'caption' block (also moving them up/down).
 let canvasDrag = null;
+const inBox = (p, b, pad) => b && p.x >= b.minX - pad && p.x <= b.maxX + pad && p.y >= b.minY - pad && p.y <= b.maxY + pad;
+
 canvas.addEventListener('pointerdown', (e) => {
   if (exporting) return;
   if ($('stageEmpty') && !$('stageEmpty').hidden) return;
   const p = canvasPoint(e);
-  const b = lastBounds;
   const pad = canvas.width * 0.02;
-  if (b && p.x >= b.minX - pad && p.x <= b.maxX + pad && p.y >= b.minY - pad && p.y <= b.maxY + pad) {
+  const target = inBox(p, lastHeroBounds, pad) ? 'hero' : inBox(p, lastBounds, pad) ? 'caption' : null;
+  if (target) {
     try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
-    state.selection = 'caption';
+    state.selection = target;
+    const b = target === 'hero' ? lastHeroBounds : lastBounds;
     const handle = canvas.width * 0.035;
     const onCorner = Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle;
     canvasDrag = {
+      target,
       mode: onCorner ? 'resize' : 'move',
       x0: p.x, y0: p.y,
-      posX0: state.overrides.posX ?? state.eff.pos.x ?? 0.5,
-      posY0: state.overrides.posY ?? state.eff.pos.y,
+      posX0: target === 'hero'
+        ? (state.overrides.heroPosX ?? state.eff.heroPos.x ?? 0.5)
+        : (state.overrides.posX ?? state.eff.pos.x ?? 0.5),
+      posY0: target === 'hero'
+        ? (state.overrides.heroPosY ?? state.eff.heroPos.y)
+        : (state.overrides.posY ?? state.eff.pos.y),
       size0: state.overrides.size || 1,
       moved: false,
     };
@@ -750,11 +840,12 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!canvasDrag) {
-    if (state.selection && lastBounds) {
+    if (state.selection && (lastBounds || lastHeroBounds)) {
       const p = canvasPoint(e);
-      const b = lastBounds, handle = canvas.width * 0.035;
-      canvas.style.cursor = (Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle) ? 'nwse-resize'
-        : (p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY) ? 'grab' : 'default';
+      const b = state.selection === 'hero' ? lastHeroBounds : lastBounds;
+      const handle = canvas.width * 0.035;
+      canvas.style.cursor = b && (Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle) ? 'nwse-resize'
+        : inBox(p, b, 0) ? 'grab' : 'default';
     }
     return;
   }
@@ -765,8 +856,10 @@ canvas.addEventListener('pointermove', (e) => {
   }
   if (!canvasDrag.moved) return;
   if (canvasDrag.mode === 'move') {
-    state.overrides.posX = clamp(canvasDrag.posX0 + (p.x - canvasDrag.x0) / canvas.width, 0.12, 0.88);
-    state.overrides.posY = clamp(canvasDrag.posY0 + (p.y - canvasDrag.y0) / canvas.height, 0.08, 0.92);
+    const nx = clamp(canvasDrag.posX0 + (p.x - canvasDrag.x0) / canvas.width, 0.12, 0.88);
+    const ny = clamp(canvasDrag.posY0 + (p.y - canvasDrag.y0) / canvas.height, 0.06, 0.94);
+    if (canvasDrag.target === 'hero') { state.overrides.heroPosX = nx; state.overrides.heroPosY = ny; }
+    else { state.overrides.posX = nx; state.overrides.posY = ny; }
   } else {
     state.overrides.size = clamp(canvasDrag.size0 * (1 + (p.x - canvasDrag.x0) / (canvas.width * 0.6)), 0.5, 2.2);
   }
@@ -781,8 +874,9 @@ canvas.addEventListener('pointerup', (e) => {
 });
 
 function drawSelectionChrome() {
-  if (state.selection !== 'caption' || !lastBounds) return;
-  const b = lastBounds;
+  if (!state.selection) return;
+  const b = state.selection === 'hero' ? lastHeroBounds : lastBounds;
+  if (!b) return;
   const W = canvas.width;
   const pad = W * 0.015;
   ctx.save();
@@ -798,7 +892,7 @@ function drawSelectionChrome() {
     ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
   }
   // label
-  const label = state.eff.behind ? 'BEHIND' : 'CAPTION';
+  const label = state.selection === 'hero' || (state.eff.behind && !state.eff.extra.splitHero) ? 'BEHIND' : 'CAPTION';
   ctx.font = `800 ${Math.round(W * 0.022)}px Inter`;
   const tw = ctx.measureText(label).width;
   ctx.fillStyle = '#5145cd';
@@ -1125,6 +1219,7 @@ function drawPreview() {
   if (state.eff.behind && maskTracker?.ready) opts.mask = maskTracker.update(video, performance.now());
   const res = drawFrame(ctx, video, t, state.groups, state.eff, opts);
   lastBounds = res?.bounds || null;
+  lastHeroBounds = res?.heroBounds || null;
   if (state.showSafe) drawSafeArea();
   drawSelectionChrome();
 }

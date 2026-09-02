@@ -16,7 +16,9 @@ export const CONFIG = {
       fast:     'onnx-community/whisper-tiny.en_timestamped',  // English only, quickest
       balanced: 'onnx-community/whisper-base_timestamped',     // multilingual (Hinglish etc.)
     },
-    defaultModel: 'fast',
+    // multilingual by default — Hindi, English and mixed clips all work
+    // without touching a setting; the English-only tiny model is the opt-in
+    defaultModel: 'balanced',
     chunkLengthS: 28,
     strideLengthS: 4,
   },

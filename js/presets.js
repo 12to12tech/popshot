@@ -76,6 +76,39 @@ export const PRESETS = [
   }),
 
   // ── BEHIND THE PERSON ────────────────────────────────────────────────────
+  // Split-layer editorial looks. Pairing rule: one high-contrast display serif
+  // carrying the hero word, its own italic (or a quiet neutral sans) carrying
+  // the supporting words — contrast in size and voice, harmony in family.
+  D({
+    id: 'gilded', name: 'Gilded', category: 'behind', badge: 'TRENDING', tier: 'pro', behind: true,
+    font: { family: 'Fraunces', weight: 300, style: 'italic', size: 0.075, transform: 'lower', lineHeight: 1.12 },
+    accentFont: { family: 'Fraunces', weight: 600, size: 0.24, transform: 'lower', letterSpacing: -0.03 },
+    grouping: { mode: 'lockup', maxWords: 5 },
+    heroPos: { y: 0.17 },
+    colors: { text: '#f2d98c', active: '#f2d98c', accent: '#f2d98c', shadow: 'rgba(0,0,0,.35)', dim: 'rgba(20,10,0,.16)' },
+    emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.78, align: 'center' },
+    extra: { splitHero: true },
+  }),
+  D({
+    id: 'inkwash', name: 'Ink Wash', category: 'behind', badge: 'NEW', tier: 'pro', behind: true,
+    font: { family: 'Inter', weight: 300, size: 0.05, transform: 'upper', letterSpacing: 0.22 },
+    accentFont: { family: '"Permanent Marker"', weight: 400, size: 0.19, transform: 'lower' },
+    grouping: { mode: 'lockup', maxWords: 5 },
+    heroPos: { y: 0.16 },
+    colors: { text: 'rgba(255,255,255,.95)', active: '#ffffff', accent: '#e63b2e', shadow: 'rgba(0,0,0,.4)', dim: 'rgba(0,0,0,.14)' },
+    emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.8, align: 'center' },
+    extra: { splitHero: true },
+  }),
+  D({
+    id: 'broadsheet', name: 'Broadsheet', category: 'behind', badge: 'NEW', tier: 'pro', behind: true,
+    font: { family: '"DM Serif Display"', weight: 400, style: 'italic', size: 0.065, lineHeight: 1.15 },
+    accentFont: { family: '"Bodoni Moda"', weight: 700, size: 0.21, transform: 'upper', letterSpacing: 0.01 },
+    grouping: { mode: 'lockup', maxWords: 5 },
+    heroPos: { y: 0.15 },
+    colors: { text: '#ffffff', active: '#ffffff', accent: 'rgba(255,255,255,.96)', shadow: 'rgba(0,0,0,.45)', dim: 'rgba(0,0,0,.2)' },
+    emphasis: 'none', anim: { in: 'rise', perWord: false }, pos: { y: 0.79, align: 'center' },
+    extra: { splitHero: true },
+  }),
   D({
     id: 'behind-anthem', name: 'Anthem', category: 'behind', badge: 'NEW', tier: 'pro', behind: true,
     font: { family: 'Anton', weight: 400, size: 0.16, transform: 'upper', lineHeight: 0.98 },
@@ -97,6 +130,30 @@ export const PRESETS = [
     grouping: { mode: 'lockup', maxWords: 4 },
     colors: { text: '#ff3b3b', active: '#ffffff', dim: 'rgba(0,0,0,.3)' },
     emphasis: 'color', anim: { in: 'pop', perWord: false }, pos: { y: 0.36, align: 'center' },
+  }),
+
+  // ── PAIRED HIGHLIGHTS (popular additions) ────────────────────────────────
+  D({
+    id: 'limelight', name: 'Limelight', category: 'popular', badge: 'TRENDING', tier: 'creator',
+    font: { family: '"Space Grotesk"', weight: 700, size: 0.06 },
+    colors: { text: '#111111', active: '#111111', wordBg: '#ffe600', wordBgAll: true, bgRadius: 0.016, glow: '#ffe600', shadow: 'rgba(0,0,0,.3)' },
+    emphasis: 'box', anim: { in: 'pop', perWord: true },
+  }),
+  D({
+    id: 'spotlit', name: 'Spotlit', category: 'popular', badge: 'NEW', tier: 'creator',
+    font: { family: 'Archivo Black', weight: 400, size: 0.062, transform: 'upper' },
+    accentFont: { family: 'Archivo Black', weight: 400, size: 0.062, transform: 'upper' },
+    colors: { text: '#ffffff', active: '#111111', wordBg: '#ffe600', stroke: '#000000', strokeWidth: 0.008, shadow: 'rgba(0,0,0,.45)' },
+    emphasis: 'box', anim: { in: 'none', perWord: false },
+    extra: { autoKey: true },
+  }),
+  D({
+    id: 'muse', name: 'Muse', category: 'editorial', badge: 'TRENDING', tier: 'creator',
+    font: { family: 'Inter', weight: 300, size: 0.052, transform: 'upper', letterSpacing: 0.24 },
+    accentFont: { family: '"Cormorant Garamond"', weight: 600, style: 'italic', size: 0.105, transform: 'lower' },
+    grouping: { mode: 'lockup', maxWords: 4 },
+    colors: { text: 'rgba(255,255,255,.92)', active: '#ffffff', accent: '#ffffff', shadow: 'rgba(0,0,0,.45)' },
+    emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.72, align: 'center' },
   }),
 
   // ── PLAYFUL ──────────────────────────────────────────────────────────────
@@ -385,8 +442,8 @@ export const PRESETS = [
 // styles surfaced under "Popular" also keep their home category; build the tab lists here
 export function presetsForCategory(catId) {
   if (catId === 'popular') {
-    const ids = ['beast-bold', 'karaoke-flip', 'boxed-hype', 'clean-bar', 'one-word-pop',
-                 'bubble-pop', 'swiss-lockup', 'behind-anthem', 'neon-glow', 'retro-yellow'];
+    const ids = ['gilded', 'beast-bold', 'limelight', 'spotlit', 'karaoke-flip', 'boxed-hype',
+                 'muse', 'clean-bar', 'one-word-pop', 'bubble-pop', 'swiss-lockup', 'neon-glow'];
     return ids.map(id => PRESETS.find(p => p.id === id)).filter(Boolean);
   }
   return PRESETS.filter(p => p.category === catId);
@@ -400,6 +457,8 @@ export function getPreset(id) {
 export const FONT_FAMILIES = [
   'Archivo Black', 'Montserrat:wght@700;800;900', 'Inter:wght@300;400;700;800',
   'Anton', 'Playfair Display:ital,wght@0,500;0,600;1,500;1,600', 'Lilita One',
+  'Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,300;1,9..144,400',
+  'Bodoni Moda:opsz,wght@6..96,700', 'DM Serif Display:ital@0;1', 'Space Grotesk:wght@500;700',
   'Permanent Marker', 'Poppins:wght@600;800', 'Bangers', 'Abril Fatface',
   'Bebas Neue', 'Titan One', 'Space Mono:wght@700', 'Oswald:ital,wght@0,600;0,700;1,700',
   'Cormorant Garamond:ital,wght@0,600;1,600', 'Libre Caslon Text:wght@700',

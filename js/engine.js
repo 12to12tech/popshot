@@ -105,7 +105,7 @@ function layoutGroup(ctx, group, preset, W, H) {
     let buf = [];
     group.words.forEach((w, i) => {
       if (i === heroIdx) {
-        if (buf.length) { lines.push({ words: buf, hero: false }); buf = []; }
+        if (buf.length && !preset.extra.splitHero) { lines.push({ words: buf, hero: false }); buf = []; }
         lines.push({ words: [w], hero: true });
       } else {
         buf.push(w);
@@ -134,16 +134,27 @@ function layoutGroup(ctx, group, preset, W, H) {
       totalH += lh;
     }
     // positions (pos.x shifts the block center; 0.5 = centered)
+    // splitHero styles anchor the hero line independently at heroPos — the
+    // "big word behind the speaker, small words in front" look
+    const split = preset.extra.splitHero;
     const cx = W * (preset.pos.x ?? 0.5);
-    let y = H * preset.pos.y - totalH / 2;
+    const stackH = laid.reduce((a, l) => a + (split && l.hero ? 0 : l.lh), 0);
+    let y = H * preset.pos.y - stackH / 2;
     for (const line of laid) {
       const scale = line.lw > maxW ? maxW / line.lw : 1;
-      let x = cx - Math.min(line.lw, maxW) / 2;
+      let lineCx = cx, lineY;
+      if (split && line.hero) {
+        lineCx = W * (preset.heroPos?.x ?? 0.5);
+        lineY = H * (preset.heroPos?.y ?? 0.2) - line.lh / 2;
+      } else {
+        lineY = y;
+        y += line.lh;
+      }
+      let x = lineCx - Math.min(line.lw, maxW) / 2;
       for (const it of line.items) {
-        it.x = x; it.y = y + line.lh / 2; it.scale = scale;
+        it.x = x; it.y = lineY + line.lh / 2; it.scale = scale;
         x += (it.wd + line.sw) * scale;
       }
-      y += line.lh;
     }
     return laid;
   }
@@ -382,34 +393,54 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   if (preset.colors.bg) drawBlockBg(ctx, laid, preset, W, H);
   if (preset.extra.lowerThird) drawLowerThirdChrome(ctx, laid, preset, W, H, opts.speaker);
 
-  // 2. captions
-  const paint = () => {
+  // 2. captions + person compositing.
+  // Classic behind styles: all text renders behind the speaker.
+  // splitHero styles: only the hero word goes behind — supporting words stay
+  // in front, which is what makes the layered editorial look read as depth.
+  const paint = (filter) => {
     ctx.save();
     if (preset.extra.quote) drawQuoteMark(ctx, laid, preset, W);
-    for (const line of laid) for (const it of line.items) drawWord(ctx, it, line, preset, state, W, t);
+    for (const line of laid) for (const it of line.items) {
+      if (filter && !filter(line, it)) continue;
+      drawWord(ctx, it, line, preset, state, W, t);
+    }
     ctx.restore();
   };
-  paint();
-
-  // 3. behind-the-subject: re-draw the person cutout on top of the text
-  // (skipped while a b-roll cutaway covers the speaker)
-  if (preset.behind && opts.mask && !brollActive) {
+  const compositePerson = () => {
     ctx.save();
     const tmp = opts.scratch;
     const tc = tmp.getContext('2d');
     tc.clearRect(0, 0, W, H);
     drawCover(tc, source, W, H);
     tc.globalCompositeOperation = 'destination-in';
-    tc.drawImage(opts.mask, 0, 0, W, H);
+    // the mask shares the video's aspect — it must go through the same
+    // cover-crop transform, or cutouts misalign on non-portrait sources
+    drawCover(tc, opts.mask, W, H);
     tc.globalCompositeOperation = 'source-over';
     ctx.drawImage(tmp, 0, 0);
     ctx.restore();
+  };
+
+  const layered = preset.behind && opts.mask && !brollActive;
+  if (layered && preset.extra.splitHero) {
+    paint((line) => line.hero);
+    compositePerson();
+    paint((line) => !line.hero);
+  } else if (layered) {
+    paint();
+    compositePerson();
+  } else {
+    paint();
   }
 
   // 4. hook title always sits in front of everything
   drawHookTitle(ctx, t, preset, opts, W, H);
 
-  return { bounds: blockBounds(laid, preset, W) };
+  const split = preset.extra.splitHero;
+  return {
+    bounds: blockBounds(laid, preset, W, split ? (l) => !l.hero : null),
+    heroBounds: split ? blockBounds(laid, preset, W, (l) => l.hero) : null,
+  };
 }
 
 // Opening hook line burned into the top safe area for the first seconds
@@ -456,14 +487,18 @@ export function drawCover(ctx, source, W, H) {
   ctx.drawImage(source, (W - dw) / 2, (H - dh) / 2, dw, dh);
 }
 
-function blockBounds(laid, preset, W) {
+function blockBounds(laid, preset, W, filter) {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const line of laid) for (const it of line.items) {
-    minX = Math.min(minX, it.x);
-    maxX = Math.max(maxX, it.x + it.wd * it.scale);
-    minY = Math.min(minY, it.y - line.lh / 2);
-    maxY = Math.max(maxY, it.y + line.lh / 2);
+  for (const line of laid) {
+    if (filter && !filter(line)) continue;
+    for (const it of line.items) {
+      minX = Math.min(minX, it.x);
+      maxX = Math.max(maxX, it.x + it.wd * it.scale);
+      minY = Math.min(minY, it.y - line.lh / 2);
+      maxY = Math.max(maxY, it.y + line.lh / 2);
+    }
   }
+  if (minX === Infinity) return null;
   return { minX, maxX, minY, maxY };
 }
 
