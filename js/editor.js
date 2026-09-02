@@ -449,6 +449,20 @@ function afterTranscript() {
   enrichKeywordsWithAI();
 }
 
+// One source of truth for the writing system: every word list — main editor
+// or bulk item — passes through this so Romanised stays Romanised everywhere.
+function applyScriptMode(words) {
+  const mode = $('scriptSel').value;
+  if (mode === 'roman') {
+    for (const w of words) {
+      if (hasDevanagari(w.text)) { if (!w.orig) w.orig = w.text; w.text = romanise(w.text); }
+    }
+  } else {
+    for (const w of words) if (w.orig) { w.text = w.orig; delete w.orig; }
+  }
+  return words;
+}
+
 // language & writing system
 $('langHide').addEventListener('click', () => {
   const body = $('langBody');
@@ -456,21 +470,17 @@ $('langHide').addEventListener('click', () => {
   $('langHide').textContent = body.hidden ? 'Show' : 'Hide';
 });
 $('scriptSel').addEventListener('change', (e) => {
-  if (!state.words.length) return;
-  pushUndo();
-  if (e.target.value === 'roman') {
-    let n = 0;
-    for (const w of state.words) {
-      if (hasDevanagari(w.text)) { w.orig = w.text; w.text = romanise(w.text); n++; }
-    }
-    toast(n ? `Romanised ${n} words` : 'Nothing to romanise in this transcript.');
-  } else {
-    let n = 0;
-    for (const w of state.words) if (w.orig) { w.text = w.orig; delete w.orig; n++; }
-    toast(n ? 'Restored original script' : 'Already in the original script.');
+  const roman = e.target.value === 'roman';
+  if (state.words.length) {
+    pushUndo();
+    applyScriptMode(state.words);
+    rebuildGroups();
+    renderTranscript();
   }
-  rebuildGroups();
-  renderTranscript();
+  // bulk items follow the same setting — approving or processing must never
+  // flip a transcript back to the other script
+  for (const item of bulkItems) if (item.words) applyScriptMode(item.words);
+  toast(roman ? 'Romanised — everywhere, bulk queue included' : 'Original script restored everywhere');
 });
 
 // speakers (pause-based heuristic — labels alternate on gaps)
@@ -1555,12 +1565,12 @@ async function runBulkTranscription() {
       item.status = 'transcribing';
       renderBulkList();
       try {
-        item.words = await transcribeFile(item.file, {
+        item.words = applyScriptMode(await transcribeFile(item.file, {
           model: $('modelSel').value,
           language: $('langSel').value,
           quality: $('accSel').value,
           onProgress: () => {},
-        });
+        }));
         item.status = item.words.length ? 'ready' : 'error';
         if (!item.words.length) item.error = 'no speech found';
       } catch (e) {
@@ -1637,7 +1647,8 @@ function applyBulkItem(item) {
     video.addEventListener('loadedmetadata', () => {
       $('scrubber').max = video.duration;
       $('timeDur').textContent = fmtTime(video.duration);
-      state.words = item.words.map(w => ({ ...w }));
+      applyScriptMode(item.words);   // honor the current writing system even
+      state.words = item.words.map(w => ({ ...w }));  // if it changed since transcription
       state.aiKeywords = null;
       state.hook = '';
       rebuildGroups();
@@ -1968,4 +1979,4 @@ function escapeHtml(s) {
 }
 
 // debug handle for automated tests (harmless in production)
-window.__ps = { state, get bounds() { return lastBounds; }, markDirty, rebuildGroups };
+window.__ps = { state, bulkItems, get bounds() { return lastBounds; }, markDirty, rebuildGroups };
