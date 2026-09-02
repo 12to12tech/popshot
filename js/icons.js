@@ -37,6 +37,7 @@ export const ICONS = {
   home:      '<path d="M4.5 10.5L12 4l7.5 6.5"/><path d="M6.5 9.8V19.5h11V9.8"/>',
   clip:      '<rect x="3.5" y="6" width="13" height="12" rx="2"/><polygon points="16.5 10.5 20.5 8 20.5 16 16.5 13.5" fill="currentColor" stroke="none"/>',
   target:    '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/>',
+  stack:     '<path d="M12 3.5l8.5 4.7-8.5 4.7-8.5-4.7z"/><path d="M3.5 12.6l8.5 4.7 8.5-4.7"/><path d="M3.5 16.6l8.5 4.7 8.5-4.7"/>',
 };
 
 export function icon(name, cls = 'icon') {

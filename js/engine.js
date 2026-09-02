@@ -446,7 +446,10 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   if (preset.extra.vhs) drawVhsOverlay(ctx, W, H, t);
 
   const g = groupAt(groups, t);
-  if (!g) { drawHookTitle(ctx, t, preset, opts, W, H); return { bounds: null }; }
+  if (!g) {
+    const hb = drawHookTitle(ctx, t, preset, opts, W, H);
+    return { bounds: null, hookBounds: hb };
+  }
 
   // smart hero placement: once per group, find the horizontal band where the
   // least of the speaker sits and anchor the hero word there — a close-up
@@ -511,7 +514,7 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   }
 
   // 4. hook title always sits in front of everything
-  drawHookTitle(ctx, t, preset, opts, W, H);
+  const hookBounds = drawHookTitle(ctx, t, preset, opts, W, H);
 
   // burned-in progress bar — "almost done, keep watching"
   if (opts.progress != null) {
@@ -526,43 +529,62 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   return {
     bounds: blockBounds(laid, preset, W, split ? (l) => !l.hero : null),
     heroBounds: split ? blockBounds(laid, preset, W, (l) => l.hero) : null,
+    hookBounds,
   };
 }
 
-// Opening hook line burned into the top safe area for the first seconds
+// Opening hook line burned into the top safe area for the first seconds.
+// Fully styleable: { text, until, family, weight, size (fraction of W), x, y,
+// color, stroke, upper } — every field optional, defaults give the classic
+// white poster title. Returns the block's bounds for canvas hit-testing.
 function drawHookTitle(ctx, t, preset, opts, W, H) {
   const hook = opts.hookTitle;
-  if (!hook || !hook.text || t >= hook.until) return;
-  const fade = Math.min(1, (hook.until - t) / 0.3, t / 0.25 + 0.4);
-  const px = W * 0.055;
+  if (!hook || !hook.text || t >= (hook.until ?? 2.5)) return null;
+  const until = hook.until ?? 2.5;
+  const fade = Math.min(1, (until - t) / 0.3, t / 0.25 + 0.4);
+  const px = W * (hook.size ?? 0.055);
+  const family = hook.family || '"Archivo Black", Inter, sans-serif';
+  const weight = hook.weight ?? 400;
+  const cx = W * (hook.x ?? 0.5);
   ctx.save();
   ctx.globalAlpha = Math.max(0, fade);
-  ctx.font = `400 ${Math.round(px)}px "Archivo Black", Inter, sans-serif`;
+  ctx.font = `${weight} ${Math.round(px)}px ${family}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // greedy wrap to ≤3 lines
-  const words = hook.text.toUpperCase().split(/\s+/);
+  const text = hook.upper === false ? hook.text : hook.text.toUpperCase();
+  const words = text.split(/\s+/);
   const lines = [];
   let cur = '';
+  let maxLineW = 0;
   for (const w of words) {
     const test = cur ? cur + ' ' + w : w;
     if (ctx.measureText(test).width > W * 0.84 && cur) { lines.push(cur); cur = w; }
     else cur = test;
   }
   if (cur) lines.push(cur);
+  const shown = lines.slice(0, 3);
   const lh = px * 1.22;
-  let y = H * 0.12;
-  for (const line of lines.slice(0, 3)) {
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(0,0,0,.9)';
-    ctx.lineWidth = px * 0.22;
-    ctx.strokeText(line, W / 2, y);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(line, W / 2, y);
+  let y = H * (hook.y ?? 0.12);
+  const topY = y - lh / 2;
+  for (const line of shown) {
+    maxLineW = Math.max(maxLineW, ctx.measureText(line).width);
+    if (hook.stroke !== 'none') {
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = hook.stroke || 'rgba(0,0,0,.9)';
+      ctx.lineWidth = px * 0.2;
+      ctx.strokeText(line, cx, y);
+    }
+    ctx.fillStyle = hook.color || '#ffffff';
+    ctx.fillText(line, cx, y);
     y += lh;
   }
   ctx.restore();
   ctx.textAlign = 'left';
+  return {
+    minX: cx - maxLineW / 2, maxX: cx + maxLineW / 2,
+    minY: topY, maxY: topY + shown.length * lh,
+  };
 }
 
 // Scans the person mask over a grid of candidate spots (three columns × six

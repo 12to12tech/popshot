@@ -34,6 +34,7 @@
     <button class="rail-btn" data-tool="broll" title="B-roll"><i data-icon="film" data-icon-class="icon icon-rail"></i><span>B-roll</span></button>
     <button class="rail-btn" data-tool="thumbnail" title="Thumbnail"><i data-icon="image" data-icon-class="icon icon-rail"></i><span>Thumbnail</span></button>
     <button class="rail-btn" data-tool="title" title="Title"><i data-icon="sparkle" data-icon-class="icon icon-rail"></i><span>Title</span></button>
+    <button class="rail-btn" data-tool="bulk" title="Bulk captioning"><i data-icon="stack" data-icon-class="icon icon-rail"></i><span>Bulk</span></button>
     <button class="rail-btn rail-bottom" data-tool="settings" title="Settings"><i data-icon="gear" data-icon-class="icon icon-rail"></i><span>Settings</span></button>
   </nav>
 
@@ -238,7 +239,41 @@
         <label class="tp-field"><span>Or write your own</span>
           <input type="text" id="hookCustom" placeholder="Type a custom hook line…">
         </label>
-        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="hookBurn"> Burn the hook into the video as an opening title (first 2.5 s)</label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="hookBurn"> Burn the hook into the video as an opening title</label>
+        <div id="hookStyleBlock" hidden style="margin-top:10px">
+          <p class="tp-hint">Style the opening title — or drag it right on the video.</p>
+          <div class="tp-two">
+            <label class="tp-field"><span>Font</span>
+              <select id="hsFont">
+                <option value='"Archivo Black", Inter, sans-serif'>Archivo Black — poster</option>
+                <option value='Anton, sans-serif'>Anton — condensed impact</option>
+                <option value='Gloock, serif'>Gloock — fashion didone</option>
+                <option value='"Instrument Serif", serif'>Instrument Serif — editorial</option>
+                <option value='"Alfa Slab One", serif'>Alfa Slab One — letterpress</option>
+                <option value='"Bebas Neue", sans-serif'>Bebas Neue — tall caps</option>
+                <option value='"Permanent Marker", cursive'>Permanent Marker — handwritten</option>
+                <option value='Inter, sans-serif'>Inter — clean neutral</option>
+              </select>
+            </label>
+            <label class="tp-field"><span>Case</span>
+              <select id="hsCase"><option value="upper">UPPERCASE</option><option value="as-is">As written</option></select>
+            </label>
+          </div>
+          <div class="tp-two">
+            <label class="tp-field"><span>Size <b id="hsSizeVal">5.5%</b></span>
+              <input type="range" id="hsSize" min="35" max="110" value="55" step="5">
+            </label>
+            <label class="tp-field"><span>Shows for <b id="hsDurVal">2.5s</b></span>
+              <input type="range" id="hsDur" min="10" max="60" value="25" step="5">
+            </label>
+          </div>
+          <div class="tp-two">
+            <label class="tp-field color-field"><span>Color</span><input type="color" id="hsColor" value="#ffffff"></label>
+            <label class="tp-field"><span>Outline</span>
+              <select id="hsStroke"><option value="">Black outline</option><option value="none">No outline</option></select>
+            </label>
+          </div>
+        </div>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="autoEmoji"> Emphasis emoji on highlight words</label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="progressBar"> Burn a progress bar along the bottom</label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="sfxToggle"> Punch-in sound effects (with auto-zoom)</label>
@@ -252,6 +287,23 @@
         <h3>First 3 seconds</h3>
         <p class="tp-hint">How the opening reads — the scroll-past decision happens here.</p>
         <div id="hookReport" class="hook-report"></div>
+      </div>
+    </section>
+
+    <!-- BULK -->
+    <section class="tp" id="tp-bulk" hidden>
+      <div class="tp-block">
+        <h3>Bulk captioning</h3>
+        <p class="tp-hint">Add as many clips as you want — no limits. Each is transcribed with the local model and styled with your current template and settings. Preview, approve, then process the lot.</p>
+        <button class="btn btn-small" id="bulkAddBtn"><span data-icon="plus" data-icon-class="icon icon-sm"></span> Add videos</button>
+        <input type="file" id="bulkFiles" accept="video/*" multiple hidden>
+      </div>
+      <div class="tp-block">
+        <div class="bulk-list" id="bulkList"><p class="tp-hint">No clips queued yet.</p></div>
+      </div>
+      <div class="tp-block tp-actions">
+        <button class="btn btn-small" id="bulkApproveAll">Approve all ready</button>
+        <button class="btn btn-primary" id="bulkProcess" style="margin-left:auto">Process approved</button>
       </div>
     </section>
 

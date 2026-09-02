@@ -113,6 +113,32 @@ def transcribe(media_bytes, lang):
     return words
 
 
+def finalize_video(media_bytes):
+    """Re-encode a browser recording to a socially bulletproof MP4.
+
+    MediaRecorder output (WebM, or fragmented MP4 with no proper moov atom)
+    reads as corrupt on WhatsApp and gets brutalized by Instagram. This
+    produces H.264 high@4.0, yuv420p, 30fps, ~10Mbps with AAC 44.1kHz and
+    +faststart — inside IG's recommended envelope so recompression is minimal.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, 'in.bin')
+        out = os.path.join(td, 'out.mp4')
+        with open(src, 'wb') as f:
+            f.write(media_bytes)
+        subprocess.run([
+            FFMPEG, '-y', '-v', 'error', '-i', src,
+            '-c:v', 'libx264', '-profile:v', 'high', '-level:v', '4.0',
+            '-pix_fmt', 'yuv420p', '-r', '30',
+            '-b:v', '10M', '-maxrate', '12M', '-bufsize', '20M',
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '44100',
+            '-movflags', '+faststart',
+            out,
+        ], check=True, timeout=1800)
+        with open(out, 'rb') as f:
+            return f.read()
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, must-revalidate')
@@ -135,9 +161,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             })
         if self.path.startswith('/keywords/health'):
             return self._json(200, {'ok': bool(LLM_KEY), 'model': LLM_MODEL if LLM_KEY else None})
+        if self.path.startswith('/finalize/health'):
+            return self._json(200, {'ok': bool(FFMPEG)})
         return super().do_GET()
 
     def do_POST(self):
+        if self.path.startswith('/finalize'):
+            if not FFMPEG:
+                return self._json(503, {'error': 'ffmpeg unavailable'})
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                if length <= 0 or length > 4_000_000_000:
+                    return self._json(400, {'error': 'bad length'})
+                out = finalize_video(self.rfile.read(length))
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp4')
+                self.send_header('Content-Length', str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+                return None
+            except Exception as e:  # noqa: BLE001
+                return self._json(500, {'error': str(e)})
         if self.path.startswith('/keywords'):
             if not LLM_KEY:
                 return self._json(503, {'error': 'no DEEPSEEK_API_KEY — add it to popshot/.env and restart'})

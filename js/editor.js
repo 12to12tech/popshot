@@ -36,6 +36,7 @@ const state = {
   aspect: '9:16',
   hook: '',
   hookBurn: false,
+  hookStyle: { family: '"Archivo Black", Inter, sans-serif', size: 0.055, x: 0.5, y: 0.12, color: '#ffffff', until: 2.5, upper: true },
   autoZoom: false,
   autoEmoji: false,
   progressBar: false,
@@ -62,6 +63,7 @@ let needsDraw = true;
 let timeline = null;
 let lastBounds = null;      // front caption block bounds from the last engine draw
 let lastHeroBounds = null;  // behind-hero block bounds (split-layer styles)
+let lastHookBounds = null;  // burned-in hook title bounds (while visible)
 
 const markDirty = () => { needsDraw = true; timeline?.markDirty(); };
 
@@ -274,7 +276,7 @@ function zoomAt(t) {
 }
 
 // ── Tool rail ──────────────────────────────────────────────────────────────
-const TOOLS = ['templates', 'customize', 'transcript', 'broll', 'thumbnail', 'title', 'settings'];
+const TOOLS = ['templates', 'customize', 'transcript', 'broll', 'thumbnail', 'title', 'bulk', 'settings'];
 function setTool(tool) {
   state.tool = tool;
   for (const t of TOOLS) $('tp-' + t).hidden = t !== tool;
@@ -284,6 +286,7 @@ function setTool(tool) {
   if (tool === 'thumbnail') scheduleConcepts();
   if (tool === 'title') { renderHooks(); renderHookReport(); renderFlatZones(); }
   if (tool === 'broll') renderBrollList();
+  if (tool === 'bulk') renderBulkList();
 }
 $('rail').addEventListener('click', (e) => {
   const btn = e.target.closest('.rail-btn');
@@ -998,11 +1001,14 @@ const HIT_PAD = () => canvas.width * 0.045;
 const CORNER = () => canvas.width * 0.06;
 
 function blockAt(p) {
+  if (inBox(p, lastHookBounds, HIT_PAD())) return 'hook';
   if (inBox(p, lastHeroBounds, HIT_PAD())) return 'hero';
   if (inBox(p, lastBounds, HIT_PAD())) return 'caption';
   return null;
 }
-function boundsOf(target) { return target === 'hero' ? lastHeroBounds : lastBounds; }
+function boundsOf(target) {
+  return target === 'hook' ? lastHookBounds : target === 'hero' ? lastHeroBounds : lastBounds;
+}
 function onCorner(p, b) {
   if (!b) return false;
   const c = CORNER();
@@ -1027,13 +1033,13 @@ canvas.addEventListener('pointerdown', (e) => {
       x0: p.x, y0: p.y,
       c0: center(b),
       d0: Math.max(20, dist(p, center(b))),
-      posX0: target === 'hero'
-        ? (state.overrides.heroPosX ?? state.eff.heroPos.x ?? 0.5)
+      posX0: target === 'hook' ? state.hookStyle.x
+        : target === 'hero' ? (state.overrides.heroPosX ?? state.eff.heroPos.x ?? 0.5)
         : (state.overrides.posX ?? state.eff.pos.x ?? 0.5),
-      posY0: target === 'hero'
-        ? (state.overrides.heroPosY ?? state.eff.heroPos.y)
+      posY0: target === 'hook' ? state.hookStyle.y
+        : target === 'hero' ? (state.overrides.heroPosY ?? state.eff.heroPos.y)
         : (state.overrides.posY ?? state.eff.pos.y),
-      size0: state.overrides.size || 1,
+      size0: target === 'hook' ? state.hookStyle.size : (state.overrides.size || 1),
       moved: false,
     };
   } else {
@@ -1059,15 +1065,19 @@ canvas.addEventListener('pointermove', (e) => {
   if (canvasDrag.mode === 'move') {
     const nx = clamp(canvasDrag.posX0 + (p.x - canvasDrag.x0) / canvas.width, 0.1, 0.9);
     const ny = clamp(canvasDrag.posY0 + (p.y - canvasDrag.y0) / canvas.height, 0.05, 0.95);
-    if (canvasDrag.target === 'hero') { state.overrides.heroPosX = nx; state.overrides.heroPosY = ny; }
+    if (canvasDrag.target === 'hook') { state.hookStyle.x = nx; state.hookStyle.y = ny; }
+    else if (canvasDrag.target === 'hero') { state.overrides.heroPosX = nx; state.overrides.heroPosY = ny; }
     else { state.overrides.posX = nx; state.overrides.posY = ny; }
+  } else if (canvasDrag.target === 'hook') {
+    state.hookStyle.size = clamp(canvasDrag.size0 * (dist(p, canvasDrag.c0) / canvasDrag.d0), 0.03, 0.12);
+    $('hsSize').value = Math.round(state.hookStyle.size * 1000);
+    $('hsSizeVal').textContent = (state.hookStyle.size * 100).toFixed(1) + '%';
   } else {
     // scale by how far the pointer moved from the block's center — grabbing a
     // corner and pulling outward grows the text, pulling inward shrinks it
     state.overrides.size = clamp(canvasDrag.size0 * (dist(p, canvasDrag.c0) / canvasDrag.d0), 0.4, 2.6);
   }
-  buildEff();
-  syncFineTune();
+  if (canvasDrag.target !== 'hook') { buildEff(); syncFineTune(); }
   markDirty();
 });
 canvas.addEventListener('pointerup', (e) => {
@@ -1129,7 +1139,8 @@ function drawSelectionChrome() {
     ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
   }
   // label
-  const label = state.selection === 'hero' || (state.eff.behind && !state.eff.extra.splitHero) ? 'BEHIND' : 'CAPTION';
+  const label = state.selection === 'hook' ? 'TITLE'
+    : state.selection === 'hero' || (state.eff.behind && !state.eff.extra.splitHero) ? 'BEHIND' : 'CAPTION';
   ctx.font = `800 ${Math.round(W * 0.022)}px Inter`;
   const tw = ctx.measureText(label).width;
   ctx.fillStyle = '#5145cd';
@@ -1324,9 +1335,25 @@ $('hookCustom').addEventListener('input', (e) => {
 });
 $('hookBurn').addEventListener('change', (e) => {
   state.hookBurn = e.target.checked;
+  $('hookStyleBlock').hidden = !state.hookBurn;
   markDirty();
-  if (state.hookBurn) { video.currentTime = 0.4; toast('Hook title will show for the first 2.5 s'); }
+  if (state.hookBurn) { video.currentTime = 0.4; toast(`Hook title shows for the first ${state.hookStyle.until}s — drag it to place it`); }
 });
+// hook title styling
+$('hsFont').addEventListener('change', (e) => { state.hookStyle.family = e.target.value; markDirty(); });
+$('hsCase').addEventListener('change', (e) => { state.hookStyle.upper = e.target.value === 'upper'; markDirty(); });
+$('hsSize').addEventListener('input', (e) => {
+  state.hookStyle.size = e.target.value / 1000;
+  $('hsSizeVal').textContent = (e.target.value / 10).toFixed(1) + '%';
+  markDirty();
+});
+$('hsDur').addEventListener('input', (e) => {
+  state.hookStyle.until = e.target.value / 10;
+  $('hsDurVal').textContent = (e.target.value / 10).toFixed(1) + 's';
+  markDirty();
+});
+$('hsColor').addEventListener('input', (e) => { state.hookStyle.color = e.target.value; markDirty(); });
+$('hsStroke').addEventListener('change', (e) => { state.hookStyle.stroke = e.target.value === 'none' ? 'none' : null; markDirty(); });
 $('autoEmoji').addEventListener('change', (e) => {
   state.autoEmoji = e.target.checked;
   buildEff();          // bumps the layout version so cached geometry refreshes
@@ -1481,6 +1508,203 @@ $('thumbDownload').addEventListener('click', () => {
   toast('Thumbnail saved');
 });
 
+// ── Bulk captioning ────────────────────────────────────────────────────────
+// Unlimited queue: every clip is transcribed with the current model, then
+// previewed with the current template + settings; approve the ones you like
+// and process the batch — each render goes through the same export +
+// finalize pipeline as a single clip.
+const bulkItems = [];
+let bulkSeq = 0;
+let bulkTranscribing = false;
+let bulkProcessing = false;
+
+$('bulkAddBtn').addEventListener('click', () => $('bulkFiles').click());
+$('bulkFiles').addEventListener('change', (e) => {
+  addBulkFiles([...e.target.files]);
+  e.target.value = '';
+});
+
+function addBulkFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('video/')) continue;
+    bulkItems.push({ id: ++bulkSeq, file: f, name: f.name, status: 'queued', words: null, progress: 0 });
+  }
+  renderBulkList();
+  runBulkTranscription();
+}
+
+async function runBulkTranscription() {
+  if (bulkTranscribing) return;
+  bulkTranscribing = true;
+  try {
+    for (;;) {
+      const item = bulkItems.find(i => i.status === 'queued');
+      if (!item) break;
+      item.status = 'transcribing';
+      renderBulkList();
+      try {
+        item.words = await transcribeFile(item.file, {
+          model: $('modelSel').value,
+          language: $('langSel').value,
+          onProgress: () => {},
+        });
+        item.status = item.words.length ? 'ready' : 'error';
+        if (!item.words.length) item.error = 'no speech found';
+      } catch (e) {
+        item.status = 'error';
+        item.error = e.message;
+      }
+      renderBulkList();
+    }
+  } finally {
+    bulkTranscribing = false;
+  }
+}
+
+const BULK_STATUS = {
+  queued: 'Queued', transcribing: 'Transcribing…', ready: 'Ready to review',
+  approved: 'Approved', rendering: 'Rendering…', finalizing: 'Optimizing…',
+  done: 'Done', error: 'Failed',
+};
+
+function renderBulkList() {
+  const box = $('bulkList');
+  if (!bulkItems.length) { box.innerHTML = '<p class="tp-hint">No clips queued yet.</p>'; return; }
+  box.innerHTML = '';
+  for (const item of bulkItems) {
+    const row = document.createElement('div');
+    row.className = 'bulk-item bulk-' + item.status;
+    const pct = item.status === 'rendering' ? ` ${Math.round(item.progress * 100)}%` : '';
+    row.innerHTML = `
+      <div class="bi-meta">
+        <div class="bi-name">${escapeHtml(item.name)}</div>
+        <div class="bi-time">${BULK_STATUS[item.status] || item.status}${pct}${item.error ? ' — ' + escapeHtml(item.error) : ''}</div>
+      </div>
+      ${item.status === 'ready' || item.status === 'approved' ? `
+        <button class="btn btn-small btn-plain" data-bulk-preview="${item.id}">Preview</button>
+        <button class="btn btn-small ${item.status === 'approved' ? '' : 'btn-plain'}" data-bulk-approve="${item.id}">
+          ${item.status === 'approved' ? 'Approved' : 'Approve'}</button>` : ''}
+      ${item.status === 'done' && item.href ? `<a class="btn btn-small" href="${item.href}" download="${escapeHtml(item.outName)}">Save</a>` : ''}
+      <button class="bi-del" title="Remove" data-bulk-del="${item.id}">${icon('x', 'icon icon-xs')}</button>`;
+    box.appendChild(row);
+  }
+}
+
+$('bulkList').addEventListener('click', async (e) => {
+  const prev = e.target.closest('[data-bulk-preview]');
+  const appr = e.target.closest('[data-bulk-approve]');
+  const del = e.target.closest('[data-bulk-del]');
+  if (prev) {
+    const item = bulkItems.find(i => i.id === +prev.dataset.bulkPreview);
+    if (item) await applyBulkItem(item);
+  } else if (appr) {
+    const item = bulkItems.find(i => i.id === +appr.dataset.bulkApprove);
+    if (item) { item.status = item.status === 'approved' ? 'ready' : 'approved'; renderBulkList(); }
+  } else if (del) {
+    const idx = bulkItems.findIndex(i => i.id === +del.dataset.bulkDel);
+    if (idx >= 0 && bulkItems[idx].status !== 'rendering') { bulkItems.splice(idx, 1); renderBulkList(); }
+  }
+});
+
+$('bulkApproveAll').addEventListener('click', () => {
+  let n = 0;
+  for (const i of bulkItems) if (i.status === 'ready') { i.status = 'approved'; n++; }
+  renderBulkList();
+  toast(n ? `Approved ${n} clip${n > 1 ? 's' : ''}` : 'Nothing ready to approve yet');
+});
+
+// Load a bulk item into the main editor with its own transcript
+function applyBulkItem(item) {
+  return new Promise((resolve) => {
+    state.file = item.file;
+    if (state.url) URL.revokeObjectURL(state.url);
+    state.url = URL.createObjectURL(item.file);
+    video.src = state.url;
+    video.load();
+    video.addEventListener('loadedmetadata', () => {
+      $('scrubber').max = video.duration;
+      $('timeDur').textContent = fmtTime(video.duration);
+      state.words = item.words.map(w => ({ ...w }));
+      state.aiKeywords = null;
+      state.hook = '';
+      rebuildGroups();
+      renderTranscript();
+      $('stageEmpty').hidden = true;
+      initTimeline();
+      video.currentTime = 0.05;
+      markDirty();
+      toast(`Previewing ${item.name}`);
+      resolve();
+    }, { once: true });
+  });
+}
+
+$('bulkProcess').addEventListener('click', async () => {
+  if (bulkProcessing || exporting) return;
+  const queue = bulkItems.filter(i => i.status === 'approved');
+  if (!queue.length) return toast('Approve at least one clip first');
+  bulkProcessing = true;
+  $('bulkProcess').disabled = true;
+  toast(`Processing ${queue.length} clip${queue.length > 1 ? 's' : ''} — each renders in real time`);
+  try {
+    for (const item of queue) {
+      item.status = 'rendering';
+      item.progress = 0;
+      renderBulkList();
+      try {
+        await applyBulkItem(item);
+        exporting = true;
+        const { blob, ext } = await exportVideo({
+          video,
+          groups: state.groups,
+          preset: state.eff,
+          aspect: state.aspect,
+          maskTracker,
+          speaker: state.speaker,
+          layoutVersion: state.styleVersion,
+          hookTitle: null,           // bulk runs are caption-focused; hooks are per-clip
+          broll: [],
+          zoomFn: zoomAt,
+          progressBar: state.progressBar,
+          onProgress: (p) => {
+            item.progress = p;
+            if (!(renderBulkList._t) || performance.now() - renderBulkList._t > 500) {
+              renderBulkList._t = performance.now();
+              renderBulkList();
+            }
+          },
+        });
+        exporting = false;
+        item.status = 'finalizing';
+        renderBulkList();
+        let outBlob = blob, outExt = ext;
+        try {
+          const fin = await finalizeBlob(blob);
+          if (fin.ext) { outBlob = fin.blob; outExt = fin.ext; }
+        } catch { /* keep raw */ }
+        item.outName = item.name.replace(/\.\w+$/, '') + '-captioned.' + outExt;
+        item.href = URL.createObjectURL(outBlob);
+        item.status = 'done';
+        // hand the file over immediately
+        const a = document.createElement('a');
+        a.href = item.href;
+        a.download = item.outName;
+        a.click();
+      } catch (e) {
+        exporting = false;
+        item.status = 'error';
+        item.error = e.message;
+      }
+      renderBulkList();
+    }
+    toast('Bulk processing complete');
+  } finally {
+    bulkProcessing = false;
+    $('bulkProcess').disabled = false;
+    markDirty();
+  }
+});
+
 // ── Transport ──────────────────────────────────────────────────────────────
 function fmtTime(s) {
   if (!isFinite(s)) return '0:00';
@@ -1524,12 +1748,15 @@ function drawSafeArea() {
   ctx.restore();
 }
 
+function hookTitleOpts() {
+  return state.hookBurn && state.hook ? { text: state.hook, ...state.hookStyle } : null;
+}
 function frameOpts(t) {
   return {
     scratch,
     speaker: state.speaker,
     layoutVersion: state.styleVersion,
-    hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
+    hookTitle: hookTitleOpts(),
     broll: state.broll,
     zoom: zoomAt(t ?? video.currentTime),
     progress: state.progressBar && video.duration ? (t ?? video.currentTime) / video.duration : null,
@@ -1543,6 +1770,7 @@ function drawPreview() {
   const res = drawFrame(ctx, video, t, state.groups, state.eff, opts);
   lastBounds = res?.bounds || null;
   lastHeroBounds = res?.heroBounds || null;
+  lastHookBounds = res?.hookBounds || null;
   if (state.showSafe) drawSafeArea();
   drawSelectionChrome();
 }
@@ -1602,6 +1830,27 @@ setInterval(() => {
 }, 250);
 
 // ── Export ─────────────────────────────────────────────────────────────────
+// The browser recording (WebM, or MP4 without a proper moov atom) reads as
+// corrupt on WhatsApp and gets crushed by Instagram. When the local server is
+// up, every export passes through ffmpeg into H.264 high / yuv420p / 30fps /
+// ~10Mbps / AAC 44.1k / faststart — inside Instagram's recommended envelope.
+let finalizeAvailable = null;
+async function canFinalize() {
+  if (finalizeAvailable !== null) return finalizeAvailable;
+  try {
+    const r = await fetch('/finalize/health', { signal: AbortSignal.timeout(2000) });
+    finalizeAvailable = r.ok && (await r.json()).ok;
+  } catch { finalizeAvailable = false; }
+  return finalizeAvailable;
+}
+async function finalizeBlob(blob, onMsg) {
+  if (!(await canFinalize())) return { blob, ext: null };
+  onMsg?.('Optimizing for WhatsApp & Instagram…');
+  const res = await fetch('/finalize', { method: 'POST', body: blob });
+  if (!res.ok) throw new Error('finalize failed');
+  return { blob: await res.blob(), ext: 'mp4' };
+}
+
 $('exportOpenBtn').addEventListener('click', () => {
   if (!state.groups.length) return toast('Transcribe your clip first — captions are the whole point ✦');
   $('exportModal').hidden = false;
@@ -1652,7 +1901,7 @@ $('exportBtn').addEventListener('click', async () => {
       maskTracker,
       speaker: state.speaker,
       layoutVersion: state.styleVersion,
-      hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
+      hookTitle: hookTitleOpts(),
       broll: state.broll,
       zoomFn: zoomAt,
       progressBar: state.progressBar,
@@ -1670,12 +1919,18 @@ $('exportBtn').addEventListener('click', async () => {
         $('exportMsg').textContent = `Rendering… ${(p * 100).toFixed(0)}%  (plays through the clip once)`;
       },
     });
+    let finalBlob = blob, finalExt = ext, social = false;
+    try {
+      const fin = await finalizeBlob(blob, (m) => { $('exportMsg').textContent = m; });
+      if (fin.ext) { finalBlob = fin.blob; finalExt = fin.ext; social = true; }
+    } catch (e) { console.warn('finalize failed, keeping raw recording', e); }
     const link = $('downloadLink');
     if (link.href.startsWith('blob:')) URL.revokeObjectURL(link.href); // free the previous render
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(finalBlob);
     link.href = url;
-    link.download = `${($('projName').value || 'popshot-short').replace(/[^\w-]+/g, '-')}.${ext}`;
-    $('exportDoneMsg').textContent = `${(blob.size / 1e6).toFixed(1)} MB · ${state.preset.name} · ${state.aspect}` + (state.hook ? ` · hook: “${state.hook}”` : '');
+    link.download = `${($('projName').value || 'popshot-short').replace(/[^\w-]+/g, '-')}.${finalExt}`;
+    $('exportDoneMsg').textContent = `${(finalBlob.size / 1e6).toFixed(1)} MB · ${state.preset.name} · ${state.aspect}` +
+      (social ? ' · WhatsApp & Instagram ready (H.264, faststart)' : '');
     $('exportDone').hidden = false;
     link.click();
     toast('Export complete');
