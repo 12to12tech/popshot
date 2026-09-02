@@ -1,46 +1,128 @@
 // ---------------------------------------------------------------------------
-// Popshot — Devanagari → Latin transliteration (readable "kya haal" style)
-// A compact practical romanizer: consonants carry an inherent 'a' unless a
-// vowel sign or virama follows; the trailing schwa is dropped at word end.
-// Not a scholarly ISO-15919 mapping — tuned for Hinglish captions.
+// Popshot — Devanagari → Latin transliteration
+// Two tiers: a dictionary of settled Hinglish spellings and English loanwords,
+// then a unit-based phonetic engine ported from the author's own
+// caption-studio project — proper schwa deletion (word-final always; medial
+// between voweled syllables, right to left), positional vowel forms (paisa,
+// hindi), anusvara assimilation (kampani), and aspirate geminates (achche).
+// Tuned for how creators actually romanise Hindi on screen, not for IAST.
 // ---------------------------------------------------------------------------
 
-const CONS = {
+const CONSONANTS = {
   'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
   'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'n',
   'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
   'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
   'प': 'p', 'फ': 'f', 'ब': 'b', 'भ': 'bh', 'म': 'm',
-  'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh',
-  'ष': 'sh', 'स': 's', 'ह': 'h',
-  'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f', 'य़': 'y',
+  'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'ळ': 'l',
+  'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+  'क़': 'q', 'ख़': 'kh', 'ग़': 'gh', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f', 'य़': 'y',
 };
-const VOWELS = {
+const NUKTA_MAP = { 'क': 'q', 'ख': 'kh', 'ग': 'gh', 'ज': 'z', 'ड': 'd', 'ढ': 'dh', 'फ': 'f', 'य': 'y' };
+const INDEPENDENT = {
   'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
-  'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au',
-  'ऑ': 'o', 'ऍ': 'e',
+  'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऑ': 'o', 'ऍ': 'e', 'ॠ': 'ri',
 };
+// [medial form, word-final form] — long vowels are written short at the end
 const MATRAS = {
-  'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
-  'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au',
-  'ॉ': 'o', 'ॅ': 'e',
+  'ा': ['aa', 'a'], 'ि': ['i', 'i'], 'ी': ['ee', 'i'], 'ु': ['u', 'u'],
+  'ू': ['oo', 'u'], 'ृ': ['ri', 'ri'], 'े': ['e', 'e'], 'ै': ['ai', 'ai'],
+  'ो': ['o', 'o'], 'ौ': ['au', 'au'], 'ॉ': ['o', 'o'], 'ॅ': ['e', 'e'],
 };
-const VIRAMA = '्';
-const ANUSVARA = 'ं';   // nasal — n/m
-const CANDRABINDU = 'ँ';
-const VISARGA = 'ः';
-const NUKTA = '़';
+const VIRAMA = '\u094d';
+const NUKTA_MARK = '\u093c';
+const ANUSVARA = '\u0902';
+const CHANDRABINDU = '\u0901';
+const VISARGA = '\u0903';
 const DIGITS = { '०': '0', '१': '1', '२': '2', '३': '3', '४': '4', '५': '5', '६': '6', '७': '7', '८': '8', '९': '9' };
+const LABIALS = new Set(['प', 'फ', 'ब', 'भ', 'म']);
 
 export function hasDevanagari(text) {
   return /[ऀ-ॿ]/.test(text);
 }
 
-// ── Dictionary tier ─────────────────────────────────────────────────────────
-// Pure phonetics writes "bhaaee" for भाई and "minat" for मिनट. Real Hinglish
-// has settled spellings, and English loanwords written in Devanagari should
-// come back as English. High-frequency words resolve here; the phonetic
-// engine below is only the fallback.
+function parse(word) {
+  const units = [];
+  let i = 0;
+  while (i < word.length) {
+    const ch = word[i];
+    if (DIGITS[ch]) { units.push({ type: 'raw', out: DIGITS[ch] }); i++; continue; }
+    if (INDEPENDENT[ch]) { units.push({ type: 'vowel', out: INDEPENDENT[ch] }); i++; continue; }
+    let cons = CONSONANTS[ch];
+    if (cons) {
+      const srcCh = ch;
+      i++;
+      if (word[i] === NUKTA_MARK) { cons = NUKTA_MAP[srcCh] ?? cons; i++; }
+      const unit = { type: 'cons', cons, ch: srcCh, vowel: null, schwa: true, nasal: false };
+      if (word[i] === VIRAMA) { unit.schwa = false; i++; }
+      else if (MATRAS[word[i]]) { unit.vowel = MATRAS[word[i]]; unit.schwa = false; i++; }
+      if (word[i] === ANUSVARA) { unit.nasal = true; unit.anusvara = true; i++; }
+      else if (word[i] === CHANDRABINDU) { unit.nasal = true; i++; }
+      if (word[i] === VISARGA) { unit.visarga = true; i++; }
+      units.push(unit);
+      continue;
+    }
+    if (ch === ANUSVARA || ch === CHANDRABINDU) {
+      const last = units[units.length - 1];
+      if (last) { last.nasal = true; last.anusvara = ch === ANUSVARA; }
+      i++; continue;
+    }
+    if (ch === VISARGA) { const l = units[units.length - 1]; if (l) l.visarga = true; i++; continue; }
+    if (ch === 'ऽ' || ch === VIRAMA || ch === NUKTA_MARK) { i++; continue; }
+    if (ch === '।' || ch === '॥') { units.push({ type: 'raw', out: '.' }); i++; continue; }
+    units.push({ type: 'raw', out: ch });
+    i++;
+  }
+  return units;
+}
+
+// Schwa deletion: word-final inherent 'a' always drops (unless nothing else
+// carries a vowel); medial ones drop right-to-left when flanked by voweled
+// syllables. The first syllable never loses its schwa.
+function deleteSchwas(units) {
+  const idx = units.map((u, i) => (u.type === 'cons' ? i : -1)).filter((i) => i >= 0);
+  if (!idx.length) return;
+  const hasVowel = (u) => u.type === 'vowel' || (u.type === 'cons' && (u.vowel || u.schwa));
+  const lastPos = idx[idx.length - 1];
+  const last = units[lastPos];
+  if (last.schwa && units.slice(0, lastPos).some(hasVowel)) last.schwa = false;
+  const consPos = idx.slice(0, -1);
+  for (let n = consPos.length - 1; n >= 0; n--) {
+    const p = consPos[n];
+    const u = units[p];
+    if (!u.schwa) continue;
+    const prev = units[p - 1];
+    if (!prev || !hasVowel(prev)) continue;
+    if (prev.nasal) continue;                    // kampani keeps its vowel
+    const next = units.slice(p + 1).find((v) => v.type === 'cons');
+    if (!next || !hasVowel(next)) continue;
+    u.schwa = false;
+  }
+}
+
+function renderUnits(units) {
+  let out = '';
+  units.forEach((u, i) => {
+    if (u.type !== 'cons') { out += u.out; return; }
+    // aspirate geminate doubles the stop, not the aspiration: च्छ → "chch"
+    const prev = units[i - 1];
+    const geminate = prev?.type === 'cons' && !prev.vowel && !prev.schwa &&
+      u.cons.length > prev.cons.length && u.cons.startsWith(prev.cons);
+    out += geminate ? prev.cons : u.cons;
+    const atEnd = !units.slice(i + 1).some((v) => v.type === 'cons' || v.type === 'vowel');
+    if (u.vowel) out += u.vowel[atEnd ? 1 : 0];
+    else if (u.schwa) out += 'a';
+    if (u.nasal) {
+      // anusvara assimilates to the following consonant's place
+      const next = units.slice(i + 1).find((v) => v.type === 'cons');
+      out += u.anusvara && next && LABIALS.has(next.ch) ? 'm' : 'n';
+    }
+    if (u.visarga) out += 'h';
+  });
+  return out;
+}
+
+// ── Dictionary tier: settled spellings win over rules ───────────────────────
 const DICT = new Map(Object.entries({
   // everyday Hindi, the way people actually type it
   'भाई': 'bhai', 'क्या': 'kya', 'है': 'hai', 'हैं': 'hain', 'नहीं': 'nahi', 'क्यों': 'kyun',
@@ -92,50 +174,22 @@ const DICT = new Map(Object.entries({
   'स्टूडेंट': 'student', 'अकाउंट': 'account',
   'लड़की': 'ladki', 'लड़का': 'ladka', 'लड़के': 'ladke', 'सड़क': 'sadak',
   'फरीदाबाद': 'Faridabad', 'फायदा': 'fayda', 'फिल्म': 'film', 'सफल': 'safal',
+  // additional loanwords from the author's caption-studio table
+  'ऑडियो': 'audio', 'ऑफलाइन': 'offline', 'कंपनी': 'company', 'चैनल': 'channel',
+  'गूगल': 'Google', 'ऐप': 'app', 'एप': 'app', 'डाउनलोड': 'download', 'अपलोड': 'upload',
+  'लिंक': 'link', 'प्रोफाइल': 'profile', 'पेमेंट': 'payment', 'कोर्स': 'course',
+  'स्किल': 'skill', 'जॉब': 'job', 'सैलरी': 'salary', 'इनकम': 'income',
+  'प्रॉफिट': 'profit', 'स्ट्रैटेजी': 'strategy', 'वीक': 'week', 'मंथ': 'month',
+  'ईयर': 'year', 'लेवल': 'level', 'सिस्टम': 'system', 'प्रोसेस': 'process',
+  'फाइनल': 'final', 'सिंपल': 'simple', 'स्पेशल': 'special', 'रियल': 'real', 'पावर': 'power',
 }));
 
 export function romanise(text) {
   if (!hasDevanagari(text)) return text;
-  // dictionary first: strip surrounding punctuation, look up the core word
-  const m = text.normalize('NFC').match(/^([^ऀ-ॿ]*)([ऀ-ॿ]+)([^ऀ-ॿ]*)$/u);
-  if (m && DICT.has(m[2])) return m[1] + DICT.get(m[2]) + m[3];
-  return romanisePhonetic(text);
-}
-
-function romanisePhonetic(text) {
-  let out = '';
-  const chars = [...text.normalize('NFC')];
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
-    if (CONS[ch]) {
-      // merge a following nukta into the base consonant when present
-      let base = ch;
-      if (chars[i + 1] === NUKTA) { base = ch + NUKTA; if (CONS[base]) i++; else base = ch; }
-      out += CONS[base] || CONS[ch];
-      const next = chars[i + 1];
-      if (next === VIRAMA) { i++; continue; }               // explicit cluster, no vowel
-      if (next && MATRAS[next]) { out += MATRAS[next]; i++; continue; }
-      // inherent 'a' — dropped at the end of a word (schwa deletion)
-      const after = chars[i + 1];
-      const wordEnds = !after || !(CONS[after] || VOWELS[after] || MATRAS[after] || after === ANUSVARA || after === CANDRABINDU || after === NUKTA || after === VIRAMA);
-      if (!wordEnds) out += 'a';
-    } else if (VOWELS[ch]) {
-      out += VOWELS[ch];
-    } else if (ch === ANUSVARA || ch === CANDRABINDU) {
-      out += 'n';
-    } else if (ch === VISARGA) {
-      out += 'h';
-    } else if (DIGITS[ch]) {
-      out += DIGITS[ch];
-    } else if (ch === '।' || ch === '॥') {
-      out += '.';
-    } else if (ch === NUKTA || ch === VIRAMA || MATRAS[ch]) {
-      // stray combining mark — skip
-    } else {
-      out += ch;
-    }
-  }
-  // casual-Hinglish finals: लड़की → "ladki" not "ladkee", गुरु → "guru"
-  out = out.replace(/ee(?=[^a-z]|$)/g, 'i').replace(/oo(?=[^a-z]|$)/g, 'u').replace(/aa(?=[^a-z]|$)/g, 'a');
-  return out;
+  const m = /^([^ऀ-ॿ]*)(.*?)([^ऀ-ॿ]*)$/s.exec(text.normalize('NFC'));
+  const [, pre, core, post] = m;
+  if (DICT.has(core)) return pre + DICT.get(core) + post;
+  const units = parse(core);
+  deleteSchwas(units);
+  return pre + renderUnits(units) + post;
 }
