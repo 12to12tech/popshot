@@ -96,15 +96,17 @@ export const PRESETS = [
   // carrying the hero word, its own italic (or a quiet neutral sans) carrying
   // the supporting words — contrast in size and voice, harmony in family.
   D({
-    // Pairing A: Gloock didone hero + Instrument Serif italic support —
-    // same serif elegance, ×3 scale contrast. The fashion-cover look.
+    // Pairing A′: Gloock didone hero + Space Grotesk support — era contrast
+    // (fashion serif vs modern grotesque), and the tall x-height keeps the
+    // front captions readable on busy footage. White front, gold hero; the
+    // active word flips to the hero's gold so the two layers converse.
     id: 'gilded', name: 'Gilded', category: 'behind', badge: 'TRENDING', tier: 'pro', behind: true,
-    font: { family: '"Instrument Serif"', weight: 400, style: 'italic', size: 0.092, transform: 'lower', lineHeight: 1.06 },
+    font: { family: '"Space Grotesk"', weight: 500, size: 0.062, lineHeight: 1.18 },
     accentFont: { family: 'Gloock', weight: 400, size: 0.28, transform: 'lower', letterSpacing: -0.02 },
     grouping: { mode: 'lockup', maxWords: 6 },
     heroPos: { y: 0.16 },
-    colors: { text: '#f4d47c', active: '#f4d47c', accent: '#f4d47c', shadow: 'rgba(30,15,0,.4)', dim: 'rgba(25,12,0,.14)' },
-    emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.8, align: 'center' },
+    colors: { text: '#ffffff', active: '#f4d47c', accent: '#f4d47c', shadow: 'rgba(0,0,0,.5)', dim: 'rgba(25,12,0,.14)' },
+    emphasis: 'color', anim: { in: 'fade', perWord: false }, pos: { y: 0.8, align: 'center' },
     extra: { splitHero: true },
   }),
   D({
