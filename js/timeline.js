@@ -260,6 +260,18 @@ export class Timeline {
       const label = mm ? `${mm}:${String(Math.floor(ss)).padStart(2, '0')}` : (step < 1 ? ss.toFixed(1) : `${Math.floor(ss)}`) + 's';
       ctx.fillText(label, x + 3, 2);
     }
+    // retention flat zones — translucent red bands over the ruler where
+    // nothing engaging happens for 6s+ (from api.getFlatZones)
+    const zones = this.api.getFlatZones?.() || [];
+    for (const fz of zones) {
+      const x0 = this._xOf(fz.start), x1 = this._xOf(fz.end);
+      if (x1 < 0 || x0 > W) continue;
+      ctx.fillStyle = 'rgba(179,38,30,.16)';
+      ctx.fillRect(x0, 2, x1 - x0, ROW_RULER - 4);
+      ctx.fillStyle = 'rgba(179,38,30,.55)';
+      ctx.fillRect(x0, ROW_RULER - 4, x1 - x0, 2);
+    }
+
     // track labels
     ctx.font = '800 8px "JetBrains Mono", monospace';
     ctx.fillStyle = '#a1a1ac';

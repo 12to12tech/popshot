@@ -17,6 +17,7 @@ import { Timeline } from './timeline.js';
 import { renderThumb } from './thumbs.js';
 import { romanise, hasDevanagari } from './translit.js';
 import { markKeywords } from './keywords.js';
+import { sfxInit, sfxReady, setMonitor, recordStream, scheduleZoomSfx, cancelSfx } from './sfx.js';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
@@ -34,6 +35,9 @@ const state = {
   hookBurn: false,
   autoZoom: false,
   autoEmoji: false,
+  progressBar: false,
+  sfx: false,
+  aiKeywords: null,   // null = heuristic; array of word indices once the LLM answers
   showSafe: false,
   speakers: false,
   speaker: { name: '', role: '' },
@@ -163,12 +167,60 @@ function buildEff() {
 buildEff();
 
 function rebuildGroups() {
-  // re-pick transcript keywords whenever the words change — split styles put
-  // exactly these (and nothing else) behind the speaker
-  markKeywords(state.words, video.duration || 0);
+  // keywords drive the split-layer heroes, the zoom plan and the SFX. The
+  // heuristic answers instantly; when the LLM has spoken, its picks win.
+  if (state.aiKeywords) {
+    for (const w of state.words) delete w.key;
+    for (const i of state.aiKeywords) if (state.words[i] && !state.words[i].deleted) state.words[i].key = true;
+  } else {
+    markKeywords(state.words, video.duration || 0);
+  }
   state.groups = groupWords(state.words, state.eff);
   buildZoomPlan();
+  computeFlatZones();
   markDirty();
+}
+
+// ── AI keyword picking (DeepSeek via the local server) ─────────────────────
+// The heuristic can't feel which word carries a sentence; a language model
+// can. Runs after transcription; falls back silently when no key is set.
+async function enrichKeywordsWithAI() {
+  try {
+    const res = await fetch('/keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        words: state.words.map(w => ({ text: w.text })),
+        duration: video.duration || 0,
+      }),
+    });
+    if (!res.ok) return;
+    const j = await res.json();
+    if (!Array.isArray(j.indices) || !j.indices.length) return;
+    state.aiKeywords = j.indices;
+    rebuildGroups();
+    renderTranscript();
+    toast(`🤖 ${j.model || 'AI'} picked ${j.indices.length} highlight words`);
+  } catch { /* offline or deployed build — heuristic stays */ }
+}
+
+// ── Retention flat zones ───────────────────────────────────────────────────
+// Spans where nothing happens for 6s+ — no keyword, no punch-in, no b-roll.
+// Flat stretches are where thumbs leave.
+let flatZones = [];
+function computeFlatZones() {
+  const dur = video.duration || 0;
+  if (!dur || !state.words.length) { flatZones = []; return; }
+  const events = [0];
+  for (const z of zoomPlan) events.push(z.start);
+  for (const w of state.words) if (w.key && !w.deleted) events.push(w.start);
+  for (const b of state.broll) { events.push(b.start); events.push(b.start + b.dur); }
+  events.push(dur);
+  events.sort((a, b) => a - b);
+  flatZones = [];
+  for (let i = 1; i < events.length; i++) {
+    if (events[i] - events[i - 1] > 6) flatZones.push({ start: events[i - 1], end: events[i] });
+  }
 }
 
 // ── Auto-zoom ──────────────────────────────────────────────────────────────
@@ -213,7 +265,7 @@ function setTool(tool) {
   if (tool === 'templates') renderStyleGrid();
   if (tool === 'transcript') renderTranscript();
   if (tool === 'thumbnail') scheduleConcepts();
-  if (tool === 'title') { renderHooks(); renderHookReport(); }
+  if (tool === 'title') { renderHooks(); renderHookReport(); renderFlatZones(); }
   if (tool === 'broll') renderBrollList();
 }
 $('rail').addEventListener('click', (e) => {
@@ -300,6 +352,13 @@ localAsrModel().then(name => {
   $('modelSel').value = 'local';
 }).catch(() => {});
 
+// AI highlight-picking availability (DeepSeek via the local server)
+fetch('/keywords/health').then(r => r.json()).then(j => {
+  $('aiStatus').textContent = j.ok
+    ? `AI highlight picking: on (${j.model})`
+    : 'AI highlight picking: off — add DEEPSEEK_API_KEY=sk-… to popshot/.env and restart the server. Heuristic picking is used meanwhile.';
+}).catch(() => { $('aiStatus').textContent = 'AI highlight picking: heuristic (no local server).'; });
+
 // landing-page handoff + style preselect
 takeFile().then(f => { if (f && !state.file) loadFile(f); }).catch(() => {});
 try {
@@ -358,12 +417,14 @@ $('manualGo').addEventListener('click', () => {
 });
 
 function afterTranscript() {
+  state.aiKeywords = null;   // fresh transcript → fresh picks
   rebuildGroups();
   $('stageEmpty').hidden = true;
   initTimeline();
   renderTranscript();
   setTool('transcript');
   toast(`Transcribed ${state.words.length} words ✓`);
+  enrichKeywordsWithAI();
 }
 
 // language & writing system
@@ -564,6 +625,7 @@ function initTimeline() {
     getWords: () => state.words,
     getGroups: () => state.groups,
     getBroll: () => state.broll,
+    getFlatZones: () => flatZones,
     getDuration: () => video.duration || 0,
     getTime: () => video.currentTime || 0,
     seek: (t) => { if (exporting) return; video.currentTime = t; markDirty(); },
@@ -1241,6 +1303,43 @@ $('autoEmoji').addEventListener('change', (e) => {
   rebuildGroups();
   toast(state.autoEmoji ? 'Highlight words get an emoji 🔥' : 'Emoji off');
 });
+$('progressBar').addEventListener('change', (e) => {
+  state.progressBar = e.target.checked;
+  markDirty();
+  toast(state.progressBar ? 'Progress bar will be burned into the export' : 'Progress bar off');
+});
+$('sfxToggle').addEventListener('change', (e) => {
+  state.sfx = e.target.checked;
+  if (state.sfx) {
+    const ok = sfxInit(video);   // toggle click is the required user gesture
+    if (!ok) { state.sfx = false; e.target.checked = false; return toast('Audio engine unavailable in this browser.'); }
+    if (!state.autoZoom) { state.autoZoom = true; $('zoomBtn').classList.add('on'); markDirty(); }
+    toast('Whoosh on sentences, pop on keywords — synced to the punch-ins 🔊');
+    if (!video.paused) scheduleZoomSfx(zoomPlan, video.currentTime);
+  } else {
+    cancelSfx();
+    toast('Sound effects off');
+  }
+});
+
+function renderFlatZones() {
+  const box = $('flatZoneList');
+  if (!box) return;
+  if (!state.words.length) { box.innerHTML = ''; return; }
+  if (!flatZones.length) {
+    box.innerHTML = '<div class="hr-item good">No flat zones — something is always moving. 🎯</div>';
+    return;
+  }
+  box.innerHTML = flatZones.map((z, i) =>
+    `<button class="hook-item" data-fz="${i}">⚠️ ${fmtTime(z.start)}–${fmtTime(z.end)} · ${(z.end - z.start).toFixed(0)}s flat<span class="score">TAP TO SEEK</span></button>`
+  ).join('');
+}
+$('flatZoneList').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-fz]');
+  if (!btn) return;
+  const z = flatZones[+btn.dataset.fz];
+  if (z) { video.currentTime = z.start + 0.05; markDirty(); toast('Add a b-roll cutaway or emphasize a word here'); }
+});
 
 // How the opening reads — each finding names something fixable. The scroll
 // decision happens in the first three seconds, so this is the panel that
@@ -1362,6 +1461,10 @@ function togglePlay() {
   if (video.paused) { video.play(); $('playBtn').textContent = '❚❚'; }
   else { video.pause(); $('playBtn').textContent = '▶'; }
 }
+// SFX ride the playhead: schedule upcoming punches on play/seek, drop on pause
+video.addEventListener('play', () => { if (state.sfx && sfxReady() && !exporting) scheduleZoomSfx(zoomPlan, video.currentTime); });
+video.addEventListener('pause', () => cancelSfx());
+video.addEventListener('seeked', () => { if (state.sfx && sfxReady() && !video.paused && !exporting) scheduleZoomSfx(zoomPlan, video.currentTime); });
 $('playBtn').addEventListener('click', togglePlay);
 video.addEventListener('ended', () => { $('playBtn').textContent = '▶'; });
 video.addEventListener('pause', () => { $('playBtn').textContent = '▶'; });
@@ -1399,6 +1502,7 @@ function frameOpts(t) {
     hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
     broll: state.broll,
     zoom: zoomAt(t ?? video.currentTime),
+    progress: state.progressBar && video.duration ? (t ?? video.currentTime) / video.duration : null,
   };
 }
 
@@ -1521,6 +1625,14 @@ $('exportBtn').addEventListener('click', async () => {
       hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
       broll: state.broll,
       zoomFn: zoomAt,
+      progressBar: state.progressBar,
+      audioStream: state.sfx && sfxReady() ? recordStream() : null,
+      onStarted: () => {
+        if (state.sfx && sfxReady()) {
+          setMonitor(false);                                   // silent for you, full level on the recording
+          scheduleZoomSfx(zoomPlan, 0, { monitor: false, record: true });
+        }
+      },
       prepFrame: (t) => syncBroll(t, true),
       signal: abortCtl.signal,
       onProgress: (p) => {
@@ -1542,6 +1654,7 @@ $('exportBtn').addEventListener('click', async () => {
     else toast('Export cancelled');
   } finally {
     exporting = false;
+    if (state.sfx && sfxReady()) { cancelSfx(); setMonitor(true); }
     $('exportBtn').disabled = false;
     $('cancelExportBtn').hidden = true;
     $('exportProgress').hidden = true;

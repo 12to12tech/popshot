@@ -227,6 +227,13 @@
         </label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="hookBurn"> Burn the hook into the video as an opening title (first 2.5 s)</label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="autoEmoji"> Auto emoji on highlight words 🔥</label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="progressBar"> Burn a progress bar along the bottom</label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="sfxToggle"> Punch-in sound effects (with auto-zoom) 🔊</label>
+      </div>
+      <div class="tp-block">
+        <h3>Flat zones</h3>
+        <p class="tp-hint">Stretches with no keyword, punch-in or b-roll for 6&nbsp;s+ — where thumbs leave. Marked red on the timeline.</p>
+        <div id="flatZoneList"></div>
       </div>
       <div class="tp-block">
         <h3>First 3 seconds</h3>
@@ -246,6 +253,7 @@
           </select>
           <small>Runs in your browser — nothing is uploaded.</small>
         </label>
+        <p class="tp-hint" id="aiStatus">AI highlight picking: checking…</p>
       </div>
       <div class="tp-block">
         <h3>Clip</h3>

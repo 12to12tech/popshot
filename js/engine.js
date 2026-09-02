@@ -505,6 +505,15 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   // 4. hook title always sits in front of everything
   drawHookTitle(ctx, t, preset, opts, W, H);
 
+  // burned-in progress bar — "almost done, keep watching"
+  if (opts.progress != null) {
+    const ph = Math.max(3, H * 0.006);
+    ctx.fillStyle = 'rgba(255,255,255,.25)';
+    ctx.fillRect(0, H - ph, W, ph);
+    ctx.fillStyle = preset.colors.accent || preset.colors.active || '#ffe600';
+    ctx.fillRect(0, H - ph, W * Math.max(0, Math.min(1, opts.progress)), ph);
+  }
+
   const split = preset.extra.splitHero;
   return {
     bounds: blockBounds(laid, preset, W, split ? (l) => !l.hero : null),

@@ -64,7 +64,8 @@ async function probeMimes(w, h, key) {
 // resolves { blob, ext, mime }
 export async function exportVideo(opts) {
   const { video, groups, preset, aspect = CONFIG.export.defaultAspect, maskTracker,
-          speaker, layoutVersion, hookTitle, broll, prepFrame, zoomFn, onProgress, signal } = opts;
+          speaker, layoutVersion, hookTitle, broll, prepFrame, zoomFn, progressBar,
+          audioStream: providedAudio, onStarted, onProgress, signal } = opts;
   const size = CONFIG.export.sizes[aspect] || CONFIG.export.sizes['9:16'];
 
   const canvas = document.createElement('canvas');
@@ -77,19 +78,24 @@ export async function exportVideo(opts) {
   const mime = await findWorkingMime(size.w, size.h);
   const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
 
-  // canvas stream + original audio track
+  // canvas stream + audio. When the editor supplies a pre-mixed stream
+  // (voice + SFX from its WebAudio graph), use that and leave the element's
+  // volume alone — the graph controls what the user hears.
   const stream = canvas.captureStream(CONFIG.export.fps);
-  let audioStream = null;
-  try {
-    audioStream = video.captureStream ? video.captureStream() : video.mozCaptureStream?.();
-  } catch { /* some browsers refuse before playback; retry after play() below */ }
+  let audioStream = providedAudio || null;
+  if (!audioStream) {
+    try {
+      audioStream = video.captureStream ? video.captureStream() : video.mozCaptureStream?.();
+    } catch { /* some browsers refuse before playback; retry after play() below */ }
+  }
 
-  const wasMuted = video.muted, wasTime = video.currentTime;
+  const wasMuted = video.muted, wasTime = video.currentTime, wasVolume = video.volume;
   video.muted = false;         // muted elements produce silent capture tracks in some browsers
-  video.volume = 0.0001;       // effectively silent for the user, audible to the recorder
+  if (!providedAudio) video.volume = 0.0001; // effectively silent for the user, audible to the recorder
   video.currentTime = 0;
 
   await video.play();
+  onStarted?.();
   if (!audioStream) {
     try { audioStream = video.captureStream ? video.captureStream() : null; } catch { /* video-only export */ }
   }
@@ -122,7 +128,11 @@ export async function exportVideo(opts) {
       let mask = null;
       if (preset.behind && maskTracker?.ready) mask = maskTracker.update(video, performance.now());
       prepFrame?.(t);
-      drawFrame(ctx, video, t, groups, preset, { mask, scratch, speaker, layoutVersion, hookTitle, broll, zoom: zoomFn?.(t) || 1 });
+      drawFrame(ctx, video, t, groups, preset, {
+        mask, scratch, speaker, layoutVersion, hookTitle, broll,
+        zoom: zoomFn?.(t) || 1,
+        progress: progressBar ? t / duration : null,
+      });
       onProgress?.(Math.min(1, t / duration));
       if (video.ended || t >= duration - 0.03) finish();
     } finally {
@@ -136,7 +146,7 @@ export async function exportVideo(opts) {
     if (rec.state !== 'inactive') rec.stop();
     video.pause();
     video.muted = wasMuted;
-    video.volume = 1;
+    video.volume = providedAudio ? wasVolume : 1;
     video.currentTime = wasTime;
   };
   const onEnded = () => finish();
