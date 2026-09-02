@@ -348,7 +348,7 @@ export class Timeline {
         ctx.save();
         ctx.beginPath(); ctx.rect(x0 + 3, brTop, bw - 6, brH); ctx.clip();
         ctx.fillStyle = i === this.selectedBroll ? '#fff' : '#0f4740';
-        ctx.fillText((b.kind === 'video' ? '▶ ' : '🖼 ') + (b.name || 'b-roll'), x0 + 5, brTop + brH / 2 + 0.5);
+        ctx.fillText(b.name || (b.kind === 'video' ? 'clip' : 'image'), x0 + 5, brTop + brH / 2 + 0.5);
         ctx.restore();
       }
     }

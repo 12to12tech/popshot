@@ -18,6 +18,9 @@ import { renderThumb } from './thumbs.js';
 import { romanise, hasDevanagari } from './translit.js';
 import { markKeywords } from './keywords.js';
 import { sfxInit, sfxReady, setMonitor, recordStream, scheduleZoomSfx, cancelSfx } from './sfx.js';
+import { icon, mountIcons } from './icons.js';
+
+mountIcons();
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
@@ -117,14 +120,14 @@ function undo() {
   redoStack.push(snapshot());
   applySnap(undoStack.pop());
   syncUndoButtons();
-  toast('Undone ↶', 1200);
+  toast('Undone', 1200);
 }
 function redo() {
   if (!redoStack.length) return;
   undoStack.push(snapshot());
   applySnap(redoStack.pop());
   syncUndoButtons();
-  toast('Redone ↷', 1200);
+  toast('Redone', 1200);
 }
 function syncUndoButtons() {
   $('undoBtn').disabled = !undoStack.length;
@@ -200,7 +203,7 @@ async function enrichKeywordsWithAI() {
     state.aiKeywords = j.indices;
     rebuildGroups();
     renderTranscript();
-    toast(`🤖 ${j.model || 'AI'} picked ${j.indices.length} highlight words`);
+    toast(`${j.model || 'AI'} picked ${j.indices.length} highlight words`);
   } catch { /* offline or deployed build — heuristic stays */ }
 }
 
@@ -312,14 +315,14 @@ $('replaceClipBtn').addEventListener('click', () => $('fileInput').click());
 // bundled + local sample clips (samples are optional and never committed)
 async function initSamples() {
   const row = $('sampleRow');
-  for (const s of [{ url: 'assets/samples/review.mp4', name: '▶ Review (Hinglish)' }, { url: 'assets/samples/camera.mp4', name: '▶ Camera take' }]) {
+  for (const s of [{ url: 'assets/samples/review.mp4', name: 'Review (Hinglish)' }, { url: 'assets/samples/camera.mp4', name: 'Camera take' }]) {
     try {
       const head = await fetch(s.url, { method: 'HEAD' });
       if (head.ok) {
         const b = document.createElement('button');
         b.className = 'btn btn-small btn-plain';
         b.dataset.sample = s.url;
-        b.textContent = s.name;
+        b.innerHTML = `${icon('play', 'icon icon-sm')} ${escapeHtml(s.name)}`;
         row.appendChild(b);
       }
     } catch { /* not present */ }
@@ -423,7 +426,7 @@ function afterTranscript() {
   initTimeline();
   renderTranscript();
   setTool('transcript');
-  toast(`Transcribed ${state.words.length} words ✓`);
+  toast(`Transcribed ${state.words.length} words`);
   enrichKeywordsWithAI();
 }
 
@@ -441,11 +444,11 @@ $('scriptSel').addEventListener('change', (e) => {
     for (const w of state.words) {
       if (hasDevanagari(w.text)) { w.orig = w.text; w.text = romanise(w.text); n++; }
     }
-    toast(n ? `Romanised ${n} words — kya haal ✓` : 'Nothing to romanise in this transcript.');
+    toast(n ? `Romanised ${n} words` : 'Nothing to romanise in this transcript.');
   } else {
     let n = 0;
     for (const w of state.words) if (w.orig) { w.text = w.orig; delete w.orig; n++; }
-    toast(n ? 'Restored original script ✓' : 'Already in the original script.');
+    toast(n ? 'Restored original script' : 'Already in the original script.');
   }
   rebuildGroups();
   renderTranscript();
@@ -511,7 +514,7 @@ function renderTranscript() {
       const el = document.createElement('span');
       el.className = 'tp-word' + (w.deleted ? ' cut' : '') + (msel.has(i) ? ' msel' : '');
       el.dataset.i = i;
-      el.innerHTML = `<span class="wtext">${escapeHtml(w.text)}</span><span class="x" title="${w.deleted ? 'Restore word' : 'Cut word'}">${w.deleted ? '↺' : '✕'}</span>`;
+      el.innerHTML = `<span class="wtext">${escapeHtml(w.text)}</span><span class="x" title="${w.deleted ? 'Restore word' : 'Cut word'}">${icon(w.deleted ? 'restore' : 'x', 'icon icon-xs')}</span>`;
       wordsEl.appendChild(el);
     }
     line.appendChild(wordsEl);
@@ -578,7 +581,7 @@ $('cutSelBtn').addEventListener('click', () => {
   if (!msel.size) return;
   pushUndo();
   for (const i of msel) state.words[i].deleted = true;
-  toast(`Cut ${msel.size} words ✂`);
+  toast(`Cut ${msel.size} words`);
   msel.clear();
   $('multiActions').hidden = true;
   rebuildGroups();
@@ -598,7 +601,7 @@ $('fillerBtn').addEventListener('click', () => {
   hits.forEach(w => w.deleted = true);
   rebuildGroups();
   renderTranscript();
-  toast(`Cut ${hits.length} filler word${hits.length > 1 ? 's' : ''} ✂`);
+  toast(`Cut ${hits.length} filler word${hits.length > 1 ? 's' : ''}`);
 });
 $('restoreBtn').addEventListener('click', () => {
   pushUndo();
@@ -614,7 +617,7 @@ function renderScript() {
 }
 $('copyScriptBtn').addEventListener('click', async () => {
   const text = state.words.filter(w => !w.deleted).map(w => w.text).join(' ');
-  try { await navigator.clipboard.writeText(text); toast('Script copied ⧉'); }
+  try { await navigator.clipboard.writeText(text); toast('Script copied'); }
   catch { toast('Copy blocked — select the text manually.'); }
 });
 
@@ -882,7 +885,7 @@ async function selectPreset(id) {
     maskTracker = new MaskTracker();
     toast('Loading person-segmentation model for behind-the-subject captions…');
     const ok = await maskTracker.init();
-    toast(ok ? 'Behind-the-subject captions ready ✓' : 'Segmentation unavailable — captions will render in front.');
+    toast(ok ? 'Behind-the-subject captions ready' : 'Segmentation unavailable — captions will render in front.');
     markDirty();
   }
 }
@@ -1121,7 +1124,7 @@ $('zoomBtn').addEventListener('click', () => {
   $('zoomBtn').classList.toggle('on', state.autoZoom);
   markDirty();
   toast(state.autoZoom
-    ? `Auto-zoom on — ${zoomPlan.length} punch-ins planned on keywords and fresh sentences 🎥`
+    ? `Auto-zoom on — ${zoomPlan.length} punch-ins planned on keywords and fresh sentences`
     : 'Auto-zoom off');
 });
 $('cutoutBtn').addEventListener('click', async () => {
@@ -1130,7 +1133,7 @@ $('cutoutBtn').addEventListener('click', async () => {
   const sharp = maskTracker.minIntervalMs > 40;
   maskTracker.minIntervalMs = sharp ? 33 : 66;
   $('cutoutBtn').classList.toggle('on', sharp);
-  toast(sharp ? 'Sharper cutouts on — segmentation at full rate ✨' : 'Standard cutouts (battery-friendly)');
+  toast(sharp ? 'Sharper cutouts on — segmentation at full rate' : 'Standard cutouts (battery-friendly)');
   markDirty();
 });
 $('aspectSel').addEventListener('change', (e) => {
@@ -1205,7 +1208,7 @@ function addBrollFile(file) {
     state.broll.sort((a, b) => a.start - b.start);
     renderBrollList();
     markDirty();
-    toast(`B-roll added at ${fmtTime(item.start)} 🎞`);
+    toast(`B-roll added at ${fmtTime(item.start)}`);
   }
 }
 const MINB = (d) => isFinite(d) ? d : 3;
@@ -1233,7 +1236,7 @@ function renderBrollList() {
     row.innerHTML = `${thumb}
       <div class="bi-meta"><div class="bi-name">${escapeHtml(b.name)}</div>
       <div class="bi-time">${fmtTime(b.start)} → ${fmtTime(b.start + b.dur)}</div></div>
-      <button class="bi-del" title="Remove">✕</button>`;
+      <button class="bi-del" title="Remove">${icon('x', 'icon icon-xs')}</button>`;
     row.querySelector('.bi-del').addEventListener('click', () => removeBroll(i));
     row.addEventListener('click', (e) => {
       if (e.target.closest('.bi-del')) return;
@@ -1301,7 +1304,7 @@ $('autoEmoji').addEventListener('change', (e) => {
   state.autoEmoji = e.target.checked;
   buildEff();          // bumps the layout version so cached geometry refreshes
   rebuildGroups();
-  toast(state.autoEmoji ? 'Highlight words get an emoji 🔥' : 'Emoji off');
+  toast(state.autoEmoji ? 'Highlight words get an emphasis emoji in the captions' : 'Emphasis emoji off');
 });
 $('progressBar').addEventListener('change', (e) => {
   state.progressBar = e.target.checked;
@@ -1314,7 +1317,7 @@ $('sfxToggle').addEventListener('change', (e) => {
     const ok = sfxInit(video);   // toggle click is the required user gesture
     if (!ok) { state.sfx = false; e.target.checked = false; return toast('Audio engine unavailable in this browser.'); }
     if (!state.autoZoom) { state.autoZoom = true; $('zoomBtn').classList.add('on'); markDirty(); }
-    toast('Whoosh on sentences, pop on keywords — synced to the punch-ins 🔊');
+    toast('Whoosh on sentences, pop on keywords — synced to the punch-ins');
     if (!video.paused) scheduleZoomSfx(zoomPlan, video.currentTime);
   } else {
     cancelSfx();
@@ -1327,11 +1330,11 @@ function renderFlatZones() {
   if (!box) return;
   if (!state.words.length) { box.innerHTML = ''; return; }
   if (!flatZones.length) {
-    box.innerHTML = '<div class="hr-item good">No flat zones — something is always moving. 🎯</div>';
+    box.innerHTML = '<div class="hr-item good">No flat zones — something is always moving.</div>';
     return;
   }
   box.innerHTML = flatZones.map((z, i) =>
-    `<button class="hook-item" data-fz="${i}">⚠️ ${fmtTime(z.start)}–${fmtTime(z.end)} · ${(z.end - z.start).toFixed(0)}s flat<span class="score">TAP TO SEEK</span></button>`
+    `<button class="hook-item" data-fz="${i}">${icon('warning', 'icon icon-sm icon-warn')} ${fmtTime(z.start)}–${fmtTime(z.end)} · ${(z.end - z.start).toFixed(0)}s flat<span class="score">TAP TO SEEK</span></button>`
   ).join('');
 }
 $('flatZoneList').addEventListener('click', (e) => {
@@ -1448,7 +1451,7 @@ $('thumbDownload').addEventListener('click', () => {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }, 'image/png');
-  toast('Thumbnail saved ⬇');
+  toast('Thumbnail saved');
 });
 
 // ── Transport ──────────────────────────────────────────────────────────────
@@ -1458,19 +1461,19 @@ function fmtTime(s) {
 }
 function togglePlay() {
   if (!video.src || exporting) return;
-  if (video.paused) { video.play(); $('playBtn').textContent = '❚❚'; }
-  else { video.pause(); $('playBtn').textContent = '▶'; }
+  if (video.paused) { video.play(); $('playBtn').innerHTML = icon('pause'); }
+  else { video.pause(); $('playBtn').innerHTML = icon('play'); }
 }
 // SFX ride the playhead: schedule upcoming punches on play/seek, drop on pause
 video.addEventListener('play', () => { if (state.sfx && sfxReady() && !exporting) scheduleZoomSfx(zoomPlan, video.currentTime); });
 video.addEventListener('pause', () => cancelSfx());
 video.addEventListener('seeked', () => { if (state.sfx && sfxReady() && !video.paused && !exporting) scheduleZoomSfx(zoomPlan, video.currentTime); });
 $('playBtn').addEventListener('click', togglePlay);
-video.addEventListener('ended', () => { $('playBtn').textContent = '▶'; });
-video.addEventListener('pause', () => { $('playBtn').textContent = '▶'; });
+video.addEventListener('ended', () => { $('playBtn').innerHTML = icon('play'); });
+video.addEventListener('pause', () => { $('playBtn').innerHTML = icon('play'); });
 $('muteBtn').addEventListener('click', () => {
   video.muted = !video.muted;
-  $('muteBtn').textContent = video.muted ? '🔇' : '🔊';
+  $('muteBtn').innerHTML = icon(video.muted ? 'volumeX' : 'volume');
 });
 $('scrubber').addEventListener('input', (e) => {
   if (video.duration && !exporting) { video.currentTime = +e.target.value; markDirty(); }
@@ -1648,7 +1651,7 @@ $('exportBtn').addEventListener('click', async () => {
     $('exportDoneMsg').textContent = `${(blob.size / 1e6).toFixed(1)} MB · ${state.preset.name} · ${state.aspect}` + (state.hook ? ` · hook: “${state.hook}”` : '');
     $('exportDone').hidden = false;
     link.click();
-    toast('Export complete ✅');
+    toast('Export complete');
   } catch (err) {
     if (err.name !== 'AbortError') { console.error(err); toast('Export failed: ' + err.message); }
     else toast('Export cancelled');

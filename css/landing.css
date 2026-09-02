@@ -16,6 +16,12 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
+
+/* inline SVG icons */
+.icon { width: 16px; height: 16px; vertical-align: -3px; display: inline-block; }
+.icon-sm { width: 13px; height: 13px; vertical-align: -2px; }
+.icon-lg { width: 30px; height: 30px; color: var(--brand); }
+.icon-logo { width: 18px; height: 18px; vertical-align: -3px; color: var(--brand); }
 body { font-family: Inter, -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); }
 
 /* ── Nav ─────────────────────────────────────────────────── */

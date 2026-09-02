@@ -17,6 +17,17 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
+
+/* inline SVG icons — sized by context, colored by currentColor */
+.icon { width: 16px; height: 16px; vertical-align: -3px; display: inline-block; }
+.icon-sm { width: 13px; height: 13px; vertical-align: -2px; }
+.icon-xs { width: 10px; height: 10px; vertical-align: -1px; }
+.icon-lg { width: 28px; height: 28px; }
+.icon-rail { width: 19px; height: 19px; }
+.icon-logo { width: 18px; height: 18px; vertical-align: -3px; color: var(--brand); }
+.icon-good { color: #15803d; }
+.icon-warn { color: #b45309; }
+[data-icon] { display: inline-flex; align-items: center; justify-content: center; }
 html, body { height: 100%; }
 body {
   font-family: Inter, -apple-system, system-ui, sans-serif;

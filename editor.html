@@ -12,14 +12,14 @@
 <body>
 
 <header class="topbar">
-  <a class="logo" href="index.html">✦ Popshot</a>
+  <a class="logo" href="index.html"><span data-icon="logo" data-icon-class="icon icon-logo"></span> Popshot</a>
   <input class="proj-name" id="projName" value="Untitled" spellcheck="false" aria-label="Project name">
   <div class="topbar-right">
-    <button class="tb-icon" id="undoBtn" title="Undo (⌘Z)" disabled>↶</button>
-    <button class="tb-icon" id="redoBtn" title="Redo (⇧⌘Z)" disabled>↷</button>
+    <button class="tb-icon" id="undoBtn" title="Undo (⌘Z)" disabled data-icon="undo"></button>
+    <button class="tb-icon" id="redoBtn" title="Redo (⇧⌘Z)" disabled data-icon="redo"></button>
     <span class="pill pill-soft">All features unlocked</span>
-    <a class="btn btn-plain" href="index.html">← Home</a>
-    <button class="btn btn-primary" id="exportOpenBtn">⬇ Export</button>
+    <a class="btn btn-plain" href="index.html"><span data-icon="home"></span> Home</a>
+    <button class="btn btn-primary" id="exportOpenBtn"><span data-icon="download"></span> Export</button>
   </div>
 </header>
 
@@ -28,13 +28,13 @@
   <!-- ── Tool rail ─────────────────────────────────────────────── -->
   <nav class="rail" id="rail">
     <span class="rail-label">TOOLS</span>
-    <button class="rail-btn" data-tool="templates" title="Templates"><i>🎨</i><span>Templates</span></button>
-    <button class="rail-btn" data-tool="customize" title="Customize"><i>🎚</i><span>Customize</span></button>
-    <button class="rail-btn active" data-tool="transcript" title="Transcript"><i>T</i><span>Transcript</span></button>
-    <button class="rail-btn" data-tool="broll" title="B-roll"><i>🎞</i><span>B-roll</span></button>
-    <button class="rail-btn" data-tool="thumbnail" title="Thumbnail"><i>🖼</i><span>Thumbnail</span></button>
-    <button class="rail-btn" data-tool="title" title="Title"><i>✦</i><span>Title</span></button>
-    <button class="rail-btn rail-bottom" data-tool="settings" title="Settings"><i>⚙︎</i><span>Settings</span></button>
+    <button class="rail-btn" data-tool="templates" title="Templates"><i data-icon="templates" data-icon-class="icon icon-rail"></i><span>Templates</span></button>
+    <button class="rail-btn" data-tool="customize" title="Customize"><i data-icon="sliders" data-icon-class="icon icon-rail"></i><span>Customize</span></button>
+    <button class="rail-btn active" data-tool="transcript" title="Transcript"><i data-icon="type" data-icon-class="icon icon-rail"></i><span>Transcript</span></button>
+    <button class="rail-btn" data-tool="broll" title="B-roll"><i data-icon="film" data-icon-class="icon icon-rail"></i><span>B-roll</span></button>
+    <button class="rail-btn" data-tool="thumbnail" title="Thumbnail"><i data-icon="image" data-icon-class="icon icon-rail"></i><span>Thumbnail</span></button>
+    <button class="rail-btn" data-tool="title" title="Title"><i data-icon="sparkle" data-icon-class="icon icon-rail"></i><span>Title</span></button>
+    <button class="rail-btn rail-bottom" data-tool="settings" title="Settings"><i data-icon="gear" data-icon-class="icon icon-rail"></i><span>Settings</span></button>
   </nav>
 
   <!-- ── Tool panel ────────────────────────────────────────────── -->
@@ -57,7 +57,7 @@
             <label class="tp-check"><input type="checkbox" id="multiSelect"> Select multiple</label>
           </div>
           <div class="tp-actions" id="multiActions" hidden>
-            <button class="btn btn-small" id="cutSelBtn">✂ Cut selected</button>
+            <button class="btn btn-small" id="cutSelBtn"><span data-icon="scissors" data-icon-class="icon icon-sm"></span> Cut selected</button>
             <button class="btn btn-small btn-plain" id="clearSelBtn">Clear</button>
           </div>
         </div>
@@ -99,14 +99,14 @@
                 <small>Romanised converts Devanagari to Latin letters</small>
               </label>
             </div>
-            <button class="btn btn-small" id="retranscribeBtn">↻ Re-transcribe</button>
+            <button class="btn btn-small" id="retranscribeBtn"><span data-icon="restore" data-icon-class="icon icon-sm"></span> Re-transcribe</button>
           </div>
         </div>
 
         <div class="tp-lines" id="tpLines"></div>
         <div class="tp-block tp-actions">
-          <button class="btn btn-small" id="fillerBtn">✂ Remove fillers</button>
-          <button class="btn btn-small btn-plain" id="restoreBtn">↺ Restore all</button>
+          <button class="btn btn-small" id="fillerBtn"><span data-icon="scissors" data-icon-class="icon icon-sm"></span> Remove fillers</button>
+          <button class="btn btn-small btn-plain" id="restoreBtn"><span data-icon="restore" data-icon-class="icon icon-sm"></span> Restore all</button>
           <span class="tp-count" id="wordCount"></span>
         </div>
       </div>
@@ -116,7 +116,7 @@
           <h3>Script</h3>
           <p class="tp-hint">The clip as prose — cut words are struck through. Copy it anywhere.</p>
           <div class="script-view" id="scriptView"></div>
-          <button class="btn btn-small" id="copyScriptBtn">⧉ Copy script</button>
+          <button class="btn btn-small" id="copyScriptBtn"><span data-icon="copy" data-icon-class="icon icon-sm"></span> Copy script</button>
         </div>
       </div>
     </section>
@@ -183,7 +183,7 @@
       <div class="tp-block">
         <h3>B-roll</h3>
         <p class="tp-hint">Cutaway images or clips that cover the video while your captions keep going. Paste or drop anywhere, or add at the playhead below. Drag blocks on the timeline to move and trim.</p>
-        <button class="btn btn-small" id="brollAddBtn">＋ Add at playhead</button>
+        <button class="btn btn-small" id="brollAddBtn"><span data-icon="plus" data-icon-class="icon icon-sm"></span> Add at playhead</button>
         <input type="file" id="brollFile" accept="image/*,video/*" hidden>
       </div>
       <div class="tp-block">
@@ -210,7 +210,7 @@
         <label class="tp-field"><span>Thumbnail text</span>
           <input type="text" id="thumbText" placeholder="Uses your hook by default">
         </label>
-        <button class="btn btn-small" id="thumbDownload">⬇ Download selected (PNG)</button>
+        <button class="btn btn-small" id="thumbDownload"><span data-icon="download" data-icon-class="icon icon-sm"></span> Download selected (PNG)</button>
       </div>
     </section>
 
@@ -226,9 +226,9 @@
           <input type="text" id="hookCustom" placeholder="Type a custom hook line…">
         </label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="hookBurn"> Burn the hook into the video as an opening title (first 2.5 s)</label>
-        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="autoEmoji"> Auto emoji on highlight words 🔥</label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="autoEmoji"> Emphasis emoji on highlight words</label>
         <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="progressBar"> Burn a progress bar along the bottom</label>
-        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="sfxToggle"> Punch-in sound effects (with auto-zoom) 🔊</label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="sfxToggle"> Punch-in sound effects (with auto-zoom)</label>
       </div>
       <div class="tp-block">
         <h3>Flat zones</h3>
@@ -267,9 +267,9 @@
   <main class="stage">
     <div class="stage-inner">
       <div class="canvas-pills">
-        <button class="cpill" id="safeBtn">Safe zone</button>
-        <button class="cpill" id="zoomBtn" title="Automatic punch-ins on keywords and new sentences">🎥 Auto-zoom</button>
-        <button class="cpill cpill-hero" id="cutoutBtn">✨ Get sharper cutouts</button>
+        <button class="cpill" id="safeBtn"><span data-icon="target" data-icon-class="icon icon-sm"></span> Safe zone</button>
+        <button class="cpill" id="zoomBtn" title="Automatic punch-ins on keywords and new sentences"><span data-icon="zoom" data-icon-class="icon icon-sm"></span> Auto-zoom</button>
+        <button class="cpill cpill-hero" id="cutoutBtn"><span data-icon="sparkles" data-icon-class="icon icon-sm"></span> Sharper cutouts</button>
         <div class="cpill-select">
           <select id="aspectSel" aria-label="Aspect ratio">
             <option value="9:16" selected>9:16</option>
@@ -283,8 +283,8 @@
       </div>
 
       <div class="transport">
-        <button id="playBtn" class="t-play" title="Play / pause (Space)">▶</button>
-        <button id="muteBtn" class="t-icon" title="Mute">🔊</button>
+        <button id="playBtn" class="t-play" title="Play / pause (Space)" data-icon="play"></button>
+        <button id="muteBtn" class="t-icon" title="Mute" data-icon="volume"></button>
         <span class="t-time" id="timeCur">0:00</span>
         <input type="range" id="scrubber" min="0" max="100" value="0" step="0.01">
         <span class="t-time" id="timeDur">0:00</span>
@@ -296,13 +296,13 @@
       <div class="se-card">
         <h2>Add your clip</h2>
         <div class="se-drop" id="dropzone">
-          <div class="se-plus">＋</div>
+          <div class="se-plus" data-icon="plus" data-icon-class="icon icon-lg"></div>
           <p><strong>Drop video</strong> or click to browse</p>
           <span>MP4 · MOV · WebM</span>
           <input type="file" id="fileInput" accept="video/*" hidden>
         </div>
         <div class="se-samples" id="sampleRow">
-          <button class="btn btn-small btn-plain" data-sample="assets/demo.mp4">▶ Sample clip</button>
+          <button class="btn btn-small btn-plain" data-sample="assets/demo.mp4"><span data-icon="play" data-icon-class="icon icon-sm"></span> Sample clip</button>
         </div>
         <div id="transcribeCard" hidden>
           <button class="btn btn-primary" id="transcribeBtn" style="width:100%">Transcribe clip →</button>
@@ -333,7 +333,7 @@
     <div class="tl-zoom">
       <button class="tl-btn" id="tlZoomOut" title="Zoom out">−</button>
       <span class="tl-zoom-val" id="tlZoomVal">100%</span>
-      <button class="tl-btn" id="tlZoomIn" title="Zoom in">＋</button>
+      <button class="tl-btn" id="tlZoomIn" title="Zoom in">+</button>
       <button class="tl-btn tl-fit" id="tlFit">Fit</button>
     </div>
   </div>
@@ -345,11 +345,11 @@
   <div class="modal">
     <div class="modal-head">
       <h2>Export your short</h2>
-      <button class="tb-icon" id="exportCloseBtn">✕</button>
+      <button class="tb-icon" id="exportCloseBtn" data-icon="x"></button>
     </div>
     <p class="tp-hint">The export renders the exact composition in the preview — captions, b-roll, hook and all.</p>
     <div class="export-meta" id="exportMeta"></div>
-    <button class="btn btn-primary btn-big" id="exportBtn">⬇ Render &amp; download</button>
+    <button class="btn btn-primary btn-big" id="exportBtn"><span data-icon="download"></span> Render &amp; download</button>
     <button class="btn btn-plain" id="cancelExportBtn" hidden>Cancel</button>
     <div class="progress" id="exportProgress" hidden>
       <div class="progress-msg" id="exportMsg">Rendering…</div>
@@ -357,7 +357,7 @@
     </div>
     <p class="tp-hint" id="exportNote"></p>
     <div class="export-done" id="exportDone" hidden>
-      <h3>✅ Ready to post</h3>
+      <h3><span data-icon="check" data-icon-class="icon icon-good"></span> Ready to post</h3>
       <p id="exportDoneMsg"></p>
       <a class="btn btn-primary" id="downloadLink" download>Save video</a>
     </div>
