@@ -580,6 +580,12 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
     bounds: blockBounds(laid, preset, W, split ? (l) => !l.hero : null),
     heroBounds: split ? blockBounds(laid, preset, W, (l) => l.hero) : null,
     hookBounds,
+    // per-word boxes so the editor can hit-test a double-click for in-place editing
+    wordBoxes: laid.flatMap(line => line.items.map(it => ({
+      word: it.w,
+      x0: it.x, x1: it.x + it.wd * it.scale,
+      y0: it.y - line.lh * it.scale / 2, y1: it.y + line.lh * it.scale / 2,
+    }))),
   };
 }
 

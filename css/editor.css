@@ -335,6 +335,15 @@ body {
 .se-samples { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 #manualBox textarea { margin: 8px 0; resize: vertical; }
 
+/* in-place caption editor (double-click a word on the video) */
+.canvas-edit {
+  position: absolute; z-index: 8;
+  border: 2px solid var(--brand); border-radius: 8px;
+  background: rgba(255,255,255,.96); color: var(--text);
+  font: 700 16px Inter; padding: 2px 8px; outline: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+
 /* transport */
 .transport { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 560px; }
 .t-play {

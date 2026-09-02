@@ -65,6 +65,7 @@ let timeline = null;
 let lastBounds = null;      // front caption block bounds from the last engine draw
 let lastHeroBounds = null;  // behind-hero block bounds (split-layer styles)
 let lastHookBounds = null;  // burned-in hook title bounds (while visible)
+let lastWordBoxes = [];     // per-word boxes of the caption on screen (double-click editing)
 
 const markDirty = () => { needsDraw = true; timeline?.markDirty(); };
 
@@ -1015,6 +1016,7 @@ $('spkRole').addEventListener('input', (e) => { state.speaker.role = e.target.va
 // ── Canvas direct manipulation ─────────────────────────────────────────────
 function canvasPoint(e) {
   const r = canvas.getBoundingClientRect();
+  if (!r.width || !r.height) return { x: -1, y: -1 };   // collapsed layout: nothing to hit
   return {
     x: (e.clientX - r.left) * (canvas.width / r.width),
     y: (e.clientY - r.top) * (canvas.height / r.height),
@@ -1118,6 +1120,81 @@ canvas.addEventListener('pointerup', (e) => {
 });
 canvas.addEventListener('pointerleave', () => {
   if (hoverTarget) { hoverTarget = null; markDirty(); }
+});
+
+// ── Double-click to edit right on the video ────────────────────────────────
+// Double-click a rendered word → a floating input appears over it; type the
+// fix, Enter commits (undoable, transcript panel and bulk item follow).
+// Double-click the burned-in title → edit the hook line the same way.
+let inlineEditor = null;
+function closeInlineEditor() {
+  if (inlineEditor) { inlineEditor.remove(); inlineEditor = null; }
+}
+function openInlineEditor({ x0, x1, y0, y1 }, value, onCommit) {
+  closeInlineEditor();
+  const r = canvas.getBoundingClientRect();
+  const wr = $('canvasWrap').getBoundingClientRect();
+  const sx = r.width / canvas.width, sy = r.height / canvas.height;
+  const input = document.createElement('input');
+  input.className = 'canvas-edit';
+  input.value = value;
+  input.spellcheck = true;
+  const left = (r.left - wr.left) + x0 * sx;
+  const top = (r.top - wr.top) + y0 * sy;
+  input.style.left = Math.max(4, Math.min(left, wr.width - 120)) + 'px';
+  input.style.top = Math.max(4, top) + 'px';
+  input.style.width = Math.max(110, (x1 - x0) * sx + 36) + 'px';
+  input.style.height = Math.max(30, (y1 - y0) * sy) + 'px';
+  input.style.fontSize = Math.max(14, Math.min(28, (y1 - y0) * sy * 0.6)) + 'px';
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    const val = input.value.trim();
+    closeInlineEditor();
+    if (commit && val && val !== value) onCommit(val);
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+  $('canvasWrap').appendChild(input);
+  inlineEditor = input;
+  input.focus();
+  input.select();
+}
+
+canvas.addEventListener('dblclick', (e) => {
+  if (exporting || !state.words.length) return;
+  e.preventDefault();
+  video.pause();
+  const p = canvasPoint(e);
+  // the burned-in title?
+  if (lastHookBounds && inBox(p, lastHookBounds, canvas.width * 0.02)) {
+    openInlineEditor(lastHookBounds, state.hook, (val) => {
+      state.hook = val;
+      $('hookCustom').value = val;
+      renderHooks();
+      markDirty();
+      toast('Hook updated');
+    });
+    return;
+  }
+  // a caption word?
+  const hit = lastWordBoxes.find(b => p.x >= b.x0 - 4 && p.x <= b.x1 + 4 && p.y >= b.y0 && p.y <= b.y1);
+  if (!hit) { toast('Double-click a word to edit it'); return; }
+  state.selection = null;
+  markDirty();
+  openInlineEditor(hit, hit.word.text, (val) => {
+    pushUndo();
+    hit.word.text = val;
+    delete hit.word.orig;   // a manual spelling is final — no script round-trip
+    rebuildGroups();
+    renderTranscript();
+    toast('Caption updated');
+  });
 });
 
 // arrow keys nudge the selected block (Shift = coarse steps)
@@ -1687,6 +1764,8 @@ $('bulkProcess').addEventListener('click', async () => {
       renderBulkList();
       try {
         await applyBulkItem(item);
+        // let the previous recorder/encoder fully release before the next one
+        await new Promise(r => setTimeout(r, 700));
         exporting = true;
         const { blob, ext } = await exportVideo({
           video,
@@ -1805,6 +1884,7 @@ function drawPreview() {
   lastBounds = res?.bounds || null;
   lastHeroBounds = res?.heroBounds || null;
   lastHookBounds = res?.hookBounds || null;
+  lastWordBoxes = res?.wordBoxes || [];
   if (state.showSafe) drawSafeArea();
   drawSelectionChrome();
 }
@@ -1989,4 +2069,4 @@ function escapeHtml(s) {
 }
 
 // debug handle for automated tests (harmless in production)
-window.__ps = { state, bulkItems, get bounds() { return lastBounds; }, markDirty, rebuildGroups };
+window.__ps = { state, bulkItems, get bounds() { return lastBounds; }, get wordBoxes() { return lastWordBoxes; }, markDirty, rebuildGroups };
