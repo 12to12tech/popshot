@@ -48,7 +48,8 @@ const state = {
   thumbTime: 1.0,
   thumbStyle: 'bold',
   selectedWord: -1,
-  selection: null,    // 'caption' | null — canvas selection
+  selection: null,    // 'hook' | 'hero' | 'caption' | null — canvas selection
+  bulkLinkId: null,   // bulk item currently live-linked to the editor
   tool: 'transcript',
 };
 
@@ -186,6 +187,13 @@ function buildEff() {
 buildEff();
 
 function rebuildGroups() {
+  // A previewed bulk item stays live-linked to the editor: every word edit,
+  // cut or script change lands back on the item, so Approve → Process renders
+  // exactly what was on screen — never the pre-edit transcript.
+  if (state.bulkLinkId != null) {
+    const linked = bulkItems.find(i => i.id === state.bulkLinkId);
+    if (linked) linked.words = state.words;
+  }
   // keywords drive the split-layer heroes, the zoom plan and the SFX. The
   // heuristic answers instantly; when the LLM has spoken, its picks win.
   if (state.aiKeywords) {
@@ -308,6 +316,7 @@ dz.addEventListener('drop', (e) => {
 
 function loadFile(file) {
   state.file = file;
+  state.bulkLinkId = null;   // a fresh clip is not a bulk preview
   if (state.url) URL.revokeObjectURL(state.url);
   state.url = URL.createObjectURL(file);
   video.src = state.url;
@@ -1647,8 +1656,9 @@ function applyBulkItem(item) {
     video.addEventListener('loadedmetadata', () => {
       $('scrubber').max = video.duration;
       $('timeDur').textContent = fmtTime(video.duration);
-      applyScriptMode(item.words);   // honor the current writing system even
-      state.words = item.words.map(w => ({ ...w }));  // if it changed since transcription
+      applyScriptMode(item.words);   // honor the current writing system even if it changed
+      state.words = item.words;      // live link: editor edits ARE the item's words
+      state.bulkLinkId = item.id;
       state.aiKeywords = null;
       state.hook = '';
       rebuildGroups();
