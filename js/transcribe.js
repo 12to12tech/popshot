@@ -56,10 +56,53 @@ async function decodeAudio(file, onProgress) {
   return { audio: rendered.getChannelData(0), duration: decoded.duration };
 }
 
+// ── Local machine ASR (whisper.cpp via the dev server) ─────────────────────
+// When the page is served by serve.py on a machine with whisper-cli and a
+// model, transcription runs natively (Metal-accelerated large-v3-turbo) —
+// far faster and more accurate than the in-browser path. The deployed site
+// has no such endpoint, so this degrades silently to the browser models.
+let localAsr = null; // null = unknown, false = unavailable, string = model name
+export async function localAsrModel() {
+  if (localAsr !== null) return localAsr;
+  try {
+    const res = await fetch('/transcribe/health', { signal: AbortSignal.timeout(2500) });
+    const j = res.ok ? await res.json() : null;
+    localAsr = j?.ok ? (j.model || 'whisper.cpp') : false;
+  } catch {
+    localAsr = false;
+  }
+  return localAsr;
+}
+
+async function transcribeLocal(file, language, onProgress) {
+  onProgress?.('Transcribing on this machine (Metal-accelerated)…');
+  const res = await fetch('/transcribe' + (language ? `?lang=${language}` : ''), {
+    method: 'POST',
+    body: file,
+  });
+  if (!res.ok) throw new Error(`local ASR failed (${res.status})`);
+  const j = await res.json();
+  return (j.words || []).map(w => ({ ...w, deleted: false }));
+}
+
 // → [{ text, start, end, deleted:false }]
 // `language` (ISO code like 'hi') hints multilingual models; English-only
 // models ignore it.
 export async function transcribeFile(file, { model = CONFIG.transcription.defaultModel, language = '', onProgress } = {}) {
+  if (model === 'local' || (model !== 'fast' && model !== 'balanced' && await localAsrModel())) {
+    try {
+      const words = await transcribeLocal(file, language, onProgress);
+      if (words.length) return words;
+    } catch (e) {
+      console.warn('local ASR failed, falling back to in-browser whisper', e);
+      onProgress?.('Local model unavailable — using in-browser Whisper…');
+    }
+    if (model === 'local') model = CONFIG.transcription.defaultModel;
+  }
+  return transcribeInBrowser(file, { model, language, onProgress });
+}
+
+async function transcribeInBrowser(file, { model, language, onProgress }) {
   const { audio, duration } = await decodeAudio(file, onProgress);
   onProgress?.('Loading speech model…');
   const asr = await getPipeline(model, onProgress);

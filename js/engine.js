@@ -95,11 +95,19 @@ function layoutGroup(ctx, group, preset, W, H) {
   const spaceW = () => ctx.measureText(' ').width;
 
   if (preset.grouping.mode === 'lockup') {
-    // choose hero word: longest alphabetic word in the group
-    let heroIdx = 0;
-    group.words.forEach((w, i) => {
-      if (w.text.replace(/\W/g, '').length > group.words[heroIdx].text.replace(/\W/g, '').length) heroIdx = i;
-    });
+    // choose the hero word. Split-layer styles only promote transcript-level
+    // keywords (w.key, marked by keywords.js) — a group with no keyword gets
+    // no hero at all and renders entirely in front. Classic lockups fall back
+    // to the longest word so every group keeps its lockup shape.
+    let heroIdx = -1;
+    if (preset.extra.splitHero) {
+      heroIdx = group.words.findIndex(w => w.key);
+    } else {
+      heroIdx = 0;
+      group.words.forEach((w, i) => {
+        if (w.text.replace(/\W/g, '').length > group.words[heroIdx].text.replace(/\W/g, '').length) heroIdx = i;
+      });
+    }
     // distribute words into up to 3 lines, hero on its own line
     const lines = [];
     let buf = [];

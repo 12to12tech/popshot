@@ -8,7 +8,7 @@
 import { CONFIG } from './config.js';
 import { CATEGORIES, presetsForCategory, getPreset, FONT_FAMILIES } from './presets.js';
 import { groupWords, drawFrame } from './engine.js';
-import { transcribeFile, timingsFromText } from './transcribe.js';
+import { transcribeFile, timingsFromText, localAsrModel } from './transcribe.js';
 import { suggestHooks } from './hooks.js';
 import { exportVideo, findWorkingMime } from './exporter.js';
 import { MaskTracker } from './segmenter.js';
@@ -16,6 +16,7 @@ import { takeFile } from './handoff.js';
 import { Timeline } from './timeline.js';
 import { renderThumb } from './thumbs.js';
 import { romanise, hasDevanagari } from './translit.js';
+import { markKeywords } from './keywords.js';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
@@ -159,6 +160,9 @@ function buildEff() {
 buildEff();
 
 function rebuildGroups() {
+  // re-pick transcript keywords whenever the words change — split styles put
+  // exactly these (and nothing else) behind the speaker
+  markKeywords(state.words, video.duration || 0);
   state.groups = groupWords(state.words, state.eff);
   markDirty();
 }
@@ -248,6 +252,16 @@ $('sampleRow').addEventListener('click', async (e) => {
     btn.disabled = false;
   }
 });
+
+// offer the machine's own whisper.cpp model when the dev server exposes it
+localAsrModel().then(name => {
+  if (!name) return;
+  const opt = document.createElement('option');
+  opt.value = 'local';
+  opt.textContent = `Local · ${name} (this machine, fastest)`;
+  $('modelSel').prepend(opt);
+  $('modelSel').value = 'local';
+}).catch(() => {});
 
 // landing-page handoff + style preselect
 takeFile().then(f => { if (f && !state.file) loadFile(f); }).catch(() => {});
@@ -552,6 +566,14 @@ document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (e.key === ' ') { e.preventDefault(); togglePlay(); return; }
+  if (e.key.startsWith('Arrow')) {
+    const step = e.shiftKey ? 0.03 : 0.01;
+    const moved = nudgeSelection(
+      e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0,
+      e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0,
+    );
+    if (moved) { e.preventDefault(); return; }
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (timeline?.selectedBroll >= 0) { removeBroll(timeline.selectedBroll); return; }
     if (state.selectedWord >= 0) {
@@ -803,27 +825,46 @@ function canvasPoint(e) {
   };
 }
 // Two independently draggable blocks: the front caption block and — for
-// split-layer styles — the hero word behind the speaker. Behind styles that
-// aren't split still drag as one 'caption' block (also moving them up/down).
+// split-layer styles — the hero word behind the speaker. Generous hit zones,
+// all four corners resize (scaling by distance from the block center), the
+// body moves, hovering shows an outline before you even click, and arrow
+// keys nudge the selected block.
 let canvasDrag = null;
+let hoverTarget = null;
 const inBox = (p, b, pad) => b && p.x >= b.minX - pad && p.x <= b.maxX + pad && p.y >= b.minY - pad && p.y <= b.maxY + pad;
+const HIT_PAD = () => canvas.width * 0.045;
+const CORNER = () => canvas.width * 0.06;
+
+function blockAt(p) {
+  if (inBox(p, lastHeroBounds, HIT_PAD())) return 'hero';
+  if (inBox(p, lastBounds, HIT_PAD())) return 'caption';
+  return null;
+}
+function boundsOf(target) { return target === 'hero' ? lastHeroBounds : lastBounds; }
+function onCorner(p, b) {
+  if (!b) return false;
+  const c = CORNER();
+  return [[b.minX, b.minY], [b.maxX, b.minY], [b.minX, b.maxY], [b.maxX, b.maxY]]
+    .some(([hx, hy]) => Math.abs(p.x - hx) < c && Math.abs(p.y - hy) < c);
+}
+const center = (b) => ({ x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 canvas.addEventListener('pointerdown', (e) => {
   if (exporting) return;
   if ($('stageEmpty') && !$('stageEmpty').hidden) return;
   const p = canvasPoint(e);
-  const pad = canvas.width * 0.02;
-  const target = inBox(p, lastHeroBounds, pad) ? 'hero' : inBox(p, lastBounds, pad) ? 'caption' : null;
+  const target = blockAt(p);
   if (target) {
     try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
     state.selection = target;
-    const b = target === 'hero' ? lastHeroBounds : lastBounds;
-    const handle = canvas.width * 0.035;
-    const onCorner = Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle;
+    const b = boundsOf(target);
     canvasDrag = {
       target,
-      mode: onCorner ? 'resize' : 'move',
+      mode: onCorner(p, b) ? 'resize' : 'move',
       x0: p.x, y0: p.y,
+      c0: center(b),
+      d0: Math.max(20, dist(p, center(b))),
       posX0: target === 'hero'
         ? (state.overrides.heroPosX ?? state.eff.heroPos.x ?? 0.5)
         : (state.overrides.posX ?? state.eff.pos.x ?? 0.5),
@@ -839,29 +880,29 @@ canvas.addEventListener('pointerdown', (e) => {
   markDirty();
 });
 canvas.addEventListener('pointermove', (e) => {
+  const p = canvasPoint(e);
   if (!canvasDrag) {
-    if (state.selection && (lastBounds || lastHeroBounds)) {
-      const p = canvasPoint(e);
-      const b = state.selection === 'hero' ? lastHeroBounds : lastBounds;
-      const handle = canvas.width * 0.035;
-      canvas.style.cursor = b && (Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle) ? 'nwse-resize'
-        : inBox(p, b, 0) ? 'grab' : 'default';
-    }
+    const t = blockAt(p);
+    if (t !== hoverTarget) { hoverTarget = t; markDirty(); }
+    const b = t ? boundsOf(t) : null;
+    canvas.style.cursor = !t ? 'default' : onCorner(p, b) ? 'nwse-resize' : 'grab';
     return;
   }
-  const p = canvasPoint(e);
   if (!canvasDrag.moved && (Math.abs(p.x - canvasDrag.x0) + Math.abs(p.y - canvasDrag.y0)) > 3) {
     canvasDrag.moved = true;
     beginPending();
+    canvas.style.cursor = canvasDrag.mode === 'resize' ? 'nwse-resize' : 'grabbing';
   }
   if (!canvasDrag.moved) return;
   if (canvasDrag.mode === 'move') {
-    const nx = clamp(canvasDrag.posX0 + (p.x - canvasDrag.x0) / canvas.width, 0.12, 0.88);
-    const ny = clamp(canvasDrag.posY0 + (p.y - canvasDrag.y0) / canvas.height, 0.06, 0.94);
+    const nx = clamp(canvasDrag.posX0 + (p.x - canvasDrag.x0) / canvas.width, 0.1, 0.9);
+    const ny = clamp(canvasDrag.posY0 + (p.y - canvasDrag.y0) / canvas.height, 0.05, 0.95);
     if (canvasDrag.target === 'hero') { state.overrides.heroPosX = nx; state.overrides.heroPosY = ny; }
     else { state.overrides.posX = nx; state.overrides.posY = ny; }
   } else {
-    state.overrides.size = clamp(canvasDrag.size0 * (1 + (p.x - canvasDrag.x0) / (canvas.width * 0.6)), 0.5, 2.2);
+    // scale by how far the pointer moved from the block's center — grabbing a
+    // corner and pulling outward grows the text, pulling inward shrinks it
+    state.overrides.size = clamp(canvasDrag.size0 * (dist(p, canvasDrag.c0) / canvasDrag.d0), 0.4, 2.6);
   }
   buildEff();
   syncFineTune();
@@ -872,8 +913,42 @@ canvas.addEventListener('pointerup', (e) => {
   canvasDrag = null;
   try { canvas.releasePointerCapture(e.pointerId); } catch { /* released */ }
 });
+canvas.addEventListener('pointerleave', () => {
+  if (hoverTarget) { hoverTarget = null; markDirty(); }
+});
+
+// arrow keys nudge the selected block (Shift = coarse steps)
+function nudgeSelection(dx, dy) {
+  if (!state.selection) return false;
+  beginPending();
+  if (state.selection === 'hero') {
+    state.overrides.heroPosX = clamp((state.overrides.heroPosX ?? state.eff.heroPos.x ?? 0.5) + dx, 0.1, 0.9);
+    state.overrides.heroPosY = clamp((state.overrides.heroPosY ?? state.eff.heroPos.y) + dy, 0.05, 0.95);
+  } else {
+    state.overrides.posX = clamp((state.overrides.posX ?? state.eff.pos.x ?? 0.5) + dx, 0.1, 0.9);
+    state.overrides.posY = clamp((state.overrides.posY ?? state.eff.pos.y) + dy, 0.05, 0.95);
+  }
+  commitPending();
+  buildEff();
+  syncFineTune();
+  markDirty();
+  return true;
+}
 
 function drawSelectionChrome() {
+  // hover affordance: faint outline on the block under the cursor
+  if (hoverTarget && hoverTarget !== state.selection) {
+    const hb = boundsOf(hoverTarget);
+    if (hb) {
+      const W2 = canvas.width, pad2 = W2 * 0.015;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(81,69,205,.45)';
+      ctx.lineWidth = Math.max(1, W2 * 0.002);
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(hb.minX - pad2, hb.minY - pad2, (hb.maxX - hb.minX) + pad2 * 2, (hb.maxY - hb.minY) + pad2 * 2);
+      ctx.restore();
+    }
+  }
   if (!state.selection) return;
   const b = state.selection === 'hero' ? lastHeroBounds : lastBounds;
   if (!b) return;
@@ -886,7 +961,7 @@ function drawSelectionChrome() {
   ctx.strokeRect(b.minX - pad, b.minY - pad, (b.maxX - b.minX) + pad * 2, (b.maxY - b.minY) + pad * 2);
   ctx.setLineDash([]);
   // handles
-  const hs = W * 0.014;
+  const hs = W * 0.022;
   ctx.fillStyle = '#5145cd';
   for (const [hx, hy] of [[b.minX - pad, b.minY - pad], [b.maxX + pad, b.minY - pad], [b.minX - pad, b.maxY + pad], [b.maxX + pad, b.maxY + pad]]) {
     ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
