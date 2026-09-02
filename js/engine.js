@@ -12,7 +12,8 @@ import { CONFIG } from './config.js';
 // mode, max word count and silence gaps. Deleted words are skipped entirely.
 
 export function groupWords(words, preset) {
-  const live = words.filter(w => !w.deleted && w.text.trim());
+  const live = words.filter(w => !w.deleted && w.text.trim())
+    .slice().sort((a, b) => a.start - b.start); // retimed words must stay ordered
   const maxWords = preset.grouping.maxWords || CONFIG.captions.maxWordsPerGroup;
   const maxGap = CONFIG.captions.maxGapS;
   const groups = [];
@@ -23,7 +24,7 @@ export function groupWords(words, preset) {
       !cur ||
       cur.words.length >= maxWords ||
       (w.start - cur.end) > maxGap ||
-      /[.!?]$/.test(cur.words[cur.words.length - 1].text);
+      /[.!?]["'”’]?$/.test(cur.words[cur.words.length - 1].text);
     if (startNew) {
       cur = { start: w.start, end: w.end, words: [] };
       groups.push(cur);
@@ -53,7 +54,7 @@ const clamp01 = (x) => Math.max(0, Math.min(1, x));
 function jitter(seedStr, amt) {
   let h = 0;
   for (let i = 0; i < seedStr.length; i++) h = (h * 31 + seedStr.charCodeAt(i)) | 0;
-  return (((h % 1000) / 1000) - 0.5) * 2 * amt;
+  return (((Math.abs(h) % 1000) / 1000) - 0.5) * 2 * amt;
 }
 
 function fontString(f, W) {
@@ -71,6 +72,22 @@ function applyTransform(text, f) {
 // ── Layout ─────────────────────────────────────────────────────────────────
 // Produces positioned word boxes for a group. Lockup mode stacks words into
 // up to 3 centered lines and promotes the longest word to the accent font.
+//
+// Layout involves dozens of measureText calls, so results are cached per
+// group. Groups are rebuilt (new objects) whenever words change, and callers
+// bump `layoutVersion` when the preset or its overrides change, so the cache
+// never serves stale geometry.
+
+const layoutCache = new WeakMap(); // group -> { key, laid }
+
+function layoutGroupCached(ctx, group, preset, W, H, version) {
+  const key = `${preset.id}|${W}x${H}|v${version || 0}`;
+  const hit = layoutCache.get(group);
+  if (hit && hit.key === key) return hit.laid;
+  const laid = layoutGroup(ctx, group, preset, W, H);
+  layoutCache.set(group, { key, laid });
+  return laid;
+}
 
 function layoutGroup(ctx, group, preset, W, H) {
   const f = preset.font;
@@ -97,61 +114,82 @@ function layoutGroup(ctx, group, preset, W, H) {
     });
     if (buf.length) lines.push({ words: buf, hero: false });
 
-    // measure
+    // measure (word gaps use the line's own font so measure and placement agree)
     const laid = [];
     let totalH = 0;
     for (const line of lines.slice(0, 4)) {
       const lf = line.hero && preset.accentFont ? preset.accentFont : f;
       ctx.font = fontString(lf, W);
+      const sw = spaceW();
       const lh = (lf.size || 0.06) * W * (lf.lineHeight || f.lineHeight || 1.1);
       let lw = 0;
       const items = line.words.map(w => {
         const txt = applyTransform(w.text, lf);
         const wd = ctx.measureText(txt).width + (lf.letterSpacing ? txt.length * lf.letterSpacing * (lf.size * W) : 0);
-        lw += wd + spaceW();
+        lw += wd + sw;
         return { w, txt, wd, hero: line.hero };
       });
-      lw -= spaceW();
-      laid.push({ items, lw, lh, hero: line.hero, font: lf });
+      lw -= sw;
+      laid.push({ items, lw, lh, sw, hero: line.hero, font: lf });
       totalH += lh;
     }
-    // positions
+    // positions (pos.x shifts the block center; 0.5 = centered)
+    const cx = W * (preset.pos.x ?? 0.5);
     let y = H * preset.pos.y - totalH / 2;
     for (const line of laid) {
-      let x = (W - Math.min(line.lw, maxW)) / 2;
       const scale = line.lw > maxW ? maxW / line.lw : 1;
+      let x = cx - Math.min(line.lw, maxW) / 2;
       for (const it of line.items) {
         it.x = x; it.y = y + line.lh / 2; it.scale = scale;
-        x += (it.wd + spaceW()) * scale;
+        x += (it.wd + line.sw) * scale;
       }
       y += line.lh;
     }
     return laid;
   }
 
-  // chunk / word mode: greedy wrap into lines
+  // chunk / word mode: greedy wrap into lines, centered on pos.x.
+  // Auto-emphasis (AI Edits): promote the strongest word in the group to the
+  // accent font/color — numbers and long content words win.
+  let keyWord = null;
+  if (preset.extra.autoKey && group.words.length > 1) {
+    let best = -1;
+    for (const w of group.words) {
+      const bare = w.text.replace(/\W/g, '');
+      let score = bare.length;
+      if (/\d/.test(bare)) score += 6;
+      if (/^(never|stop|every|only|best|worst|free|now|why|how|secret|real|first)$/i.test(bare)) score += 4;
+      if (bare.length <= 2) score -= 3;
+      if (score > best) { best = score; keyWord = w; }
+    }
+  }
   ctx.font = fontString(f, W);
   const lh = (f.size || 0.06) * W * (f.lineHeight || 1.15);
   const lines = [{ items: [], lw: 0 }];
   for (const w of group.words) {
-    const txt = applyTransform(w.text, f);
-    const wd = ctx.measureText(txt).width + (f.letterSpacing ? txt.length * f.letterSpacing * (f.size * W) : 0);
+    const wf = w === keyWord && preset.accentFont ? preset.accentFont : f;
+    ctx.font = fontString(wf, W);
+    const sw = spaceW();  // gap after this word, measured in this word's own font
+    const txt = applyTransform(w.text, wf);
+    const wd = ctx.measureText(txt).width + (wf.letterSpacing ? txt.length * wf.letterSpacing * (wf.size * W) : 0);
     let line = lines[lines.length - 1];
-    if (line.items.length && line.lw + spaceW() + wd > maxW) {
+    const prev = line.items[line.items.length - 1];
+    if (line.items.length && line.lw + prev.sw + wd > maxW) {
       line = { items: [], lw: 0 };
       lines.push(line);
     }
-    line.lw += (line.items.length ? spaceW() : 0) + wd;
-    line.items.push({ w, txt, wd, hero: false });
+    line.lw += (line.items.length ? line.items[line.items.length - 1].sw : 0) + wd;
+    line.items.push({ w, txt, wd, sw, hero: w === keyWord });
   }
   const totalH = lines.length * lh;
+  const cx = W * (preset.pos.x ?? 0.5);
   let y = H * preset.pos.y - totalH / 2 + lh / 2;
   const laid = [];
   for (const line of lines) {
-    let x = preset.pos.align === 'left' ? W * 0.08 : (W - line.lw) / 2;
+    let x = preset.pos.align === 'left' ? W * 0.08 : cx - line.lw / 2;
     for (const it of line.items) {
       it.x = x; it.y = y; it.scale = 1;
-      x += it.wd + spaceW();
+      x += it.wd + it.sw;
     }
     laid.push({ ...line, lh, font: f });
     y += lh;
@@ -215,8 +253,8 @@ function drawWord(ctx, it, line, preset, state, W, t) {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  // glow
-  if (c.glow && (preset.emphasis !== 'glow' || active || true)) {
+  // glow — every word glows; the active word glows brighter in its own color
+  if (c.glow) {
     ctx.shadowColor = active && preset.emphasis === 'glow' ? (c.active || c.glow) : c.glow;
     ctx.shadowBlur = px * (active ? 0.55 : 0.35);
   } else if (c.shadow) {
@@ -296,14 +334,30 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── Main render ────────────────────────────────────────────────────────────
 // drawFrame(ctx, video, t, groups, preset, opts)
-//   opts.mask     — optional person-mask canvas (same size as output) for
-//                   behind-the-subject styles
-//   opts.speaker  — { name, role } for lower-third styles
+//   opts.mask          — optional person-mask canvas (same size as output) for
+//                        behind-the-subject styles
+//   opts.speaker       — { name, role } for lower-third styles
+//   opts.layoutVersion — bump whenever the preset/overrides change (cache key)
+//   opts.hookTitle     — { text, until } burns the hook line as an opening title
+//   opts.broll         — [{ start, dur, el }] full-frame cutaways drawn over the video
+// Returns { bounds } — the active caption block's box in canvas pixels (or null),
+// so the editor can hit-test for direct manipulation.
 export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   const W = ctx.canvas.width, H = ctx.canvas.height;
 
   // 1. video frame, cover-cropped into the output aspect
   drawCover(ctx, source, W, H);
+
+  // b-roll cutaway covers the video (captions still render on top of it)
+  let brollActive = false;
+  if (opts.broll) {
+    for (const b of opts.broll) {
+      if (t >= b.start && t < b.start + b.dur && b.el) {
+        drawCover(ctx, b.el, W, H);
+        brollActive = true;
+      }
+    }
+  }
 
   // optional dim for behind styles
   if (preset.colors.dim) {
@@ -314,7 +368,7 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   if (preset.extra.vhs) drawVhsOverlay(ctx, W, H, t);
 
   const g = groupAt(groups, t);
-  if (!g) return;
+  if (!g) { drawHookTitle(ctx, t, preset, opts, W, H); return { bounds: null }; }
 
   const state = {
     groupStart: g.start,
@@ -322,7 +376,7 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
             (t >= g.end ? g.words[g.words.length - 1] : null),
   };
 
-  const laid = layoutGroup(ctx, g, preset, W, H);
+  const laid = layoutGroupCached(ctx, g, preset, W, H, opts.layoutVersion);
 
   // caption block background (bar / strip / glass / quote card)
   if (preset.colors.bg) drawBlockBg(ctx, laid, preset, W, H);
@@ -338,7 +392,8 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   paint();
 
   // 3. behind-the-subject: re-draw the person cutout on top of the text
-  if (preset.behind && opts.mask) {
+  // (skipped while a b-roll cutaway covers the speaker)
+  if (preset.behind && opts.mask && !brollActive) {
     ctx.save();
     const tmp = opts.scratch;
     const tc = tmp.getContext('2d');
@@ -350,6 +405,47 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
     ctx.drawImage(tmp, 0, 0);
     ctx.restore();
   }
+
+  // 4. hook title always sits in front of everything
+  drawHookTitle(ctx, t, preset, opts, W, H);
+
+  return { bounds: blockBounds(laid, preset, W) };
+}
+
+// Opening hook line burned into the top safe area for the first seconds
+function drawHookTitle(ctx, t, preset, opts, W, H) {
+  const hook = opts.hookTitle;
+  if (!hook || !hook.text || t >= hook.until) return;
+  const fade = Math.min(1, (hook.until - t) / 0.3, t / 0.25 + 0.4);
+  const px = W * 0.055;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, fade);
+  ctx.font = `400 ${Math.round(px)}px "Archivo Black", Inter, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // greedy wrap to ≤3 lines
+  const words = hook.text.toUpperCase().split(/\s+/);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(test).width > W * 0.84 && cur) { lines.push(cur); cur = w; }
+    else cur = test;
+  }
+  if (cur) lines.push(cur);
+  const lh = px * 1.22;
+  let y = H * 0.12;
+  for (const line of lines.slice(0, 3)) {
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,.9)';
+    ctx.lineWidth = px * 0.22;
+    ctx.strokeText(line, W / 2, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(line, W / 2, y);
+    y += lh;
+  }
+  ctx.restore();
+  ctx.textAlign = 'left';
 }
 
 export function drawCover(ctx, source, W, H) {
@@ -395,11 +491,13 @@ function drawLowerThirdChrome(ctx, laid, preset, W, H, speaker) {
     ctx.font = `800 ${Math.round(W * 0.03)}px Inter`;
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(speaker.name.toUpperCase(), W * 0.08, minY - pad);
+    const nameText = speaker.name.toUpperCase();
+    const nameW = ctx.measureText(nameText).width;  // measured in the name font
+    ctx.fillText(nameText, W * 0.08, minY - pad);
     if (speaker.role) {
       ctx.font = `400 ${Math.round(W * 0.024)}px Inter`;
       ctx.fillStyle = 'rgba(255,255,255,.75)';
-      ctx.fillText(speaker.role, W * 0.08 + ctx.measureText(speaker.name.toUpperCase()).width + W * 0.09, minY - pad);
+      ctx.fillText(speaker.role, W * 0.08 + nameW + W * 0.02, minY - pad);
     }
   }
   ctx.restore();
@@ -408,7 +506,7 @@ function drawLowerThirdChrome(ctx, laid, preset, W, H, speaker) {
 function drawQuoteMark(ctx, laid, preset, W) {
   const { minX, minY } = blockBounds(laid, preset, W);
   ctx.save();
-  ctx.font = `700 ${Math.round(W * 0.09)}px Lora`;
+  ctx.font = `italic 600 ${Math.round(W * 0.09)}px Lora`;
   ctx.fillStyle = 'rgba(255,255,255,.5)';
   ctx.textBaseline = 'alphabetic';
   ctx.fillText('“', minX - W * 0.005, minY + W * 0.02);

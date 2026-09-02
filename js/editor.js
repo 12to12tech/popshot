@@ -1,30 +1,44 @@
 // ---------------------------------------------------------------------------
-// Popshot — editor app
-// Wires the whole flow: upload → transcribe → style → words → hook/thumbnail
-// → export. State lives in one object; the preview loop re-renders from it.
+// Popshot — editor app (studio layout)
+// Tool rail + panels on the left, direct-manipulation canvas in the middle,
+// timeline with captions + b-roll tracks at the bottom. One state object;
+// the preview re-renders only when something changed (or while playing).
 // ---------------------------------------------------------------------------
 
 import { CONFIG } from './config.js';
-import { PRESETS, CATEGORIES, presetsForCategory, getPreset, FONT_FAMILIES } from './presets.js';
-import { groupWords, drawFrame, drawCover } from './engine.js';
+import { CATEGORIES, presetsForCategory, getPreset, FONT_FAMILIES } from './presets.js';
+import { groupWords, drawFrame } from './engine.js';
 import { transcribeFile, timingsFromText } from './transcribe.js';
 import { suggestHooks } from './hooks.js';
 import { exportVideo, findWorkingMime } from './exporter.js';
 import { MaskTracker } from './segmenter.js';
 import { takeFile } from './handoff.js';
+import { Timeline } from './timeline.js';
+import { renderThumb } from './thumbs.js';
+import { romanise, hasDevanagari } from './translit.js';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   file: null,
   url: null,
-  words: [],          // [{text, start, end, deleted}]
+  words: [],          // [{text, start, end, deleted, orig?}]
   groups: [],
+  broll: [],          // [{id, start, dur, kind, el, url, name}]
   preset: getPreset('beast-bold'),
+  eff: null,
+  overrides: {},      // { size, posX, posY, maxWords, caseMode, text, active }
+  styleVersion: 0,
   aspect: '9:16',
   hook: '',
+  hookBurn: false,
+  showSafe: false,
+  speakers: false,
   speaker: { name: '', role: '' },
   thumbTime: 1.0,
-  step: 'upload',
+  thumbStyle: 'bold',
+  selectedWord: -1,
+  selection: null,    // 'caption' | null — canvas selection
+  tool: 'transcript',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -34,10 +48,22 @@ const ctx = canvas.getContext('2d');
 const scratch = document.createElement('canvas');
 let maskTracker = null;
 let exporting = false;
+let needsDraw = true;
+let timeline = null;
+let lastBounds = null;    // caption block bounds from the last engine draw
+
+const markDirty = () => { needsDraw = true; timeline?.markDirty(); };
 
 // ── Fonts ──────────────────────────────────────────────────────────────────
 $('gfonts').href = 'https://fonts.googleapis.com/css2?' +
   FONT_FAMILIES.map(f => 'family=' + f.replace(/ /g, '+')).join('&') + '&display=swap';
+// once webfonts land, cached layouts measured with fallback fonts are stale —
+// bump the layout version and repaint everything font-dependent
+document.fonts.ready.then(() => setTimeout(() => {
+  state.styleVersion++;
+  markDirty();
+  if (state.tool === 'templates') renderStyleGrid();
+}, 300));
 
 // ── Toast ──────────────────────────────────────────────────────────────────
 let toastTimer;
@@ -49,27 +75,105 @@ function toast(msg, ms = 3500) {
   toastTimer = setTimeout(() => { el.hidden = true; }, ms);
 }
 
-// ── Step navigation ────────────────────────────────────────────────────────
-const STEPS = ['upload', 'style', 'words', 'package', 'export'];
-function goStep(step) {
-  state.step = step;
-  for (const s of STEPS) {
-    $('panel-' + s).hidden = s !== step;
-    const btn = document.querySelector(`[data-step="${s}"]`);
-    btn.classList.toggle('active', s === step);
-    btn.classList.toggle('done', STEPS.indexOf(s) < STEPS.indexOf(step));
+// ── Undo / redo ────────────────────────────────────────────────────────────
+const undoStack = [], redoStack = [];
+let pendingSnap = null;
+const snapshot = () => JSON.stringify({ words: state.words, overrides: state.overrides });
+function pushUndo() {
+  undoStack.push(snapshot());
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  syncUndoButtons();
+}
+function beginPending() { pendingSnap = snapshot(); }
+function commitPending() {
+  if (pendingSnap != null) {
+    undoStack.push(pendingSnap);
+    if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+    pendingSnap = null;
+    syncUndoButtons();
   }
-  if (step === 'style') renderStyleGrid();
-  if (step === 'words') renderWordEditor();
-  if (step === 'package') { renderHooks(); drawThumb(); }
-  if (step === 'export') renderExportMeta();
 }
-function unlockStep(step) {
-  document.querySelector(`[data-step="${step}"]`).disabled = false;
+function applySnap(snap) {
+  const s = JSON.parse(snap);
+  state.words = s.words;
+  state.overrides = s.overrides;
+  buildEff();
+  rebuildGroups();
+  renderTranscript();
+  syncFineTune();
 }
-$('stepNav').addEventListener('click', (e) => {
-  const btn = e.target.closest('.step');
-  if (btn && !btn.disabled) goStep(btn.dataset.step);
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshot());
+  applySnap(undoStack.pop());
+  syncUndoButtons();
+  toast('Undone ↶', 1200);
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshot());
+  applySnap(redoStack.pop());
+  syncUndoButtons();
+  toast('Redone ↷', 1200);
+}
+function syncUndoButtons() {
+  $('undoBtn').disabled = !undoStack.length;
+  $('redoBtn').disabled = !redoStack.length;
+}
+$('undoBtn').addEventListener('click', undo);
+$('redoBtn').addEventListener('click', redo);
+
+// ── Effective preset ───────────────────────────────────────────────────────
+function buildEff() {
+  const p = state.preset, o = state.overrides;
+  const eff = {
+    ...p,
+    font: { ...p.font },
+    accentFont: p.accentFont ? { ...p.accentFont } : null,
+    grouping: { ...p.grouping },
+    colors: { ...p.colors },
+    pos: { ...p.pos },
+    anim: { ...p.anim },
+    extra: { ...p.extra },
+  };
+  if (o.size) { eff.font.size *= o.size; if (eff.accentFont) eff.accentFont.size *= o.size; }
+  if (o.posY != null) eff.pos.y = o.posY;
+  if (o.posX != null) eff.pos.x = o.posX;
+  if (o.maxWords) eff.grouping.maxWords = o.maxWords;
+  if (o.caseMode !== undefined && o.caseMode !== null) {
+    const t = o.caseMode === 'none' ? null : o.caseMode;
+    eff.font.transform = t;
+    if (eff.accentFont) eff.accentFont.transform = t;
+  }
+  if (o.text) eff.colors.text = o.text;
+  if (o.active) { eff.colors.active = o.active; if (p.colors.accent) eff.colors.accent = o.active; }
+  state.styleVersion++;
+  state.eff = eff;
+}
+buildEff();
+
+function rebuildGroups() {
+  state.groups = groupWords(state.words, state.eff);
+  markDirty();
+}
+
+// ── Tool rail ──────────────────────────────────────────────────────────────
+const TOOLS = ['templates', 'customize', 'transcript', 'broll', 'thumbnail', 'title', 'settings'];
+function setTool(tool) {
+  state.tool = tool;
+  for (const t of TOOLS) $('tp-' + t).hidden = t !== tool;
+  document.querySelectorAll('.rail-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+  if (tool === 'templates') renderStyleGrid();
+  if (tool === 'transcript') renderTranscript();
+  if (tool === 'thumbnail') scheduleConcepts();
+  if (tool === 'title') renderHooks();
+  if (tool === 'broll') renderBrollList();
+}
+$('rail').addEventListener('click', (e) => {
+  const btn = e.target.closest('.rail-btn');
+  if (btn) setTool(btn.dataset.tool);
 });
 
 // ── Upload ─────────────────────────────────────────────────────────────────
@@ -92,59 +196,101 @@ function loadFile(file) {
   video.src = state.url;
   video.load();
   video.addEventListener('loadedmetadata', () => {
-    $('previewEmpty').hidden = true;
     $('transcribeCard').hidden = false;
     $('scrubber').max = video.duration;
-    updateTimeLabel();
+    $('timeDur').textContent = fmtTime(video.duration);
+    $('clipInfo').textContent = `${file.name} · ${fmtTime(video.duration)} · ${video.videoWidth}×${video.videoHeight}`;
+    state.thumbTime = Math.min(video.duration * 0.12, video.duration - 0.05);
     if (video.duration > 310) toast('Heads up: clips under 5 minutes work best.');
     video.currentTime = 0.05;
+    markDirty();
     toast(`Loaded ${file.name} · ${fmtTime(video.duration)}`);
+    if (!$('projName').dataset.touched) $('projName').value = file.name.replace(/\.\w+$/, '').slice(0, 24);
   }, { once: true });
 }
+video.addEventListener('seeked', markDirty);
+$('projName').addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
+$('replaceClipBtn').addEventListener('click', () => $('fileInput').click());
 
-// landing-page handoff
-takeFile().then(f => { if (f && !state.file) loadFile(f); }).catch(() => {});
-
-// bundled sample clip
-$('demoBtn').addEventListener('click', async () => {
+// bundled + local sample clips (samples are optional and never committed)
+async function initSamples() {
+  const row = $('sampleRow');
+  for (const s of [{ url: 'assets/samples/review.mp4', name: '▶ Review (Hinglish)' }, { url: 'assets/samples/camera.mp4', name: '▶ Camera take' }]) {
+    try {
+      const head = await fetch(s.url, { method: 'HEAD' });
+      if (head.ok) {
+        const b = document.createElement('button');
+        b.className = 'btn btn-small btn-plain';
+        b.dataset.sample = s.url;
+        b.textContent = s.name;
+        row.appendChild(b);
+      }
+    } catch { /* not present */ }
+  }
+}
+initSamples();
+$('sampleRow').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-sample]');
+  if (!btn) return;
   try {
-    $('demoBtn').disabled = true;
-    const res = await fetch('assets/demo.mp4');
-    if (!res.ok) throw new Error('sample missing');
+    btn.disabled = true;
+    const res = await fetch(btn.dataset.sample);
+    if (!res.ok) throw new Error('missing');
     const blob = await res.blob();
-    loadFile(new File([blob], 'demo.mp4', { type: 'video/mp4' }));
+    loadFile(new File([blob], btn.dataset.sample.split('/').pop(), { type: 'video/mp4' }));
   } catch {
     toast('Sample clip not found — drop in your own video instead.');
   } finally {
-    $('demoBtn').disabled = false;
+    btn.disabled = false;
   }
 });
 
+// landing-page handoff + style preselect
+takeFile().then(f => { if (f && !state.file) loadFile(f); }).catch(() => {});
+try {
+  const pre = sessionStorage.getItem('popshot-style');
+  if (pre) { sessionStorage.removeItem('popshot-style'); selectPreset(pre); }
+} catch { /* private mode */ }
+
 // ── Transcription ──────────────────────────────────────────────────────────
-$('transcribeBtn').addEventListener('click', async () => {
-  if (!state.file) return toast('Upload a clip first');
+async function runTranscription({ silent = false } = {}) {
+  if (!state.file) { toast('Upload a clip first'); return false; }
   const prog = $('transcribeProgress'), msg = $('progressMsg');
-  prog.hidden = false;
+  if (!silent) prog.hidden = false;
   $('transcribeBtn').disabled = true;
   try {
-    state.words = await transcribeFile(state.file, {
+    let words = await transcribeFile(state.file, {
       model: $('modelSel').value,
-      onProgress: (m) => { msg.textContent = m; },
+      language: $('langSel').value,
+      onProgress: (m) => { if (silent) toast(m, 2500); else msg.textContent = m; },
     });
-    if (!state.words.length) {
+    if (!words.length) {
       toast('No speech detected — you can paste the transcript manually.');
       $('manualBox').hidden = false;
-    } else {
-      afterTranscript();
+      return false;
     }
+    if ($('scriptSel').value === 'roman') {
+      words = words.map(w => hasDevanagari(w.text) ? { ...w, orig: w.text, text: romanise(w.text) } : w);
+    }
+    state.words = words;
+    afterTranscript();
+    return true;
   } catch (err) {
     console.error(err);
     toast('Transcription failed (' + err.message + '). Paste the transcript manually instead.');
     $('manualBox').hidden = false;
+    return false;
   } finally {
     prog.hidden = true;
     $('transcribeBtn').disabled = false;
   }
+}
+$('transcribeBtn').addEventListener('click', () => runTranscription());
+$('retranscribeBtn').addEventListener('click', async () => {
+  if (!state.words.length) return runTranscription();
+  pushUndo();
+  toast('Re-transcribing…');
+  await runTranscription({ silent: true });
 });
 
 $('manualBtn').addEventListener('click', () => { $('manualBox').hidden = !$('manualBox').hidden; });
@@ -158,16 +304,266 @@ $('manualGo').addEventListener('click', () => {
 
 function afterTranscript() {
   rebuildGroups();
-  ['style', 'words', 'package', 'export'].forEach(unlockStep);
-  goStep('style');
+  $('stageEmpty').hidden = true;
+  initTimeline();
+  renderTranscript();
+  setTool('transcript');
   toast(`Transcribed ${state.words.length} words ✓`);
 }
 
-function rebuildGroups() {
-  state.groups = groupWords(state.words, state.preset);
+// language & writing system
+$('langHide').addEventListener('click', () => {
+  const body = $('langBody');
+  body.hidden = !body.hidden;
+  $('langHide').textContent = body.hidden ? 'Show' : 'Hide';
+});
+$('scriptSel').addEventListener('change', (e) => {
+  if (!state.words.length) return;
+  pushUndo();
+  if (e.target.value === 'roman') {
+    let n = 0;
+    for (const w of state.words) {
+      if (hasDevanagari(w.text)) { w.orig = w.text; w.text = romanise(w.text); n++; }
+    }
+    toast(n ? `Romanised ${n} words — kya haal ✓` : 'Nothing to romanise in this transcript.');
+  } else {
+    let n = 0;
+    for (const w of state.words) if (w.orig) { w.text = w.orig; delete w.orig; n++; }
+    toast(n ? 'Restored original script ✓' : 'Already in the original script.');
+  }
+  rebuildGroups();
+  renderTranscript();
+});
+
+// speakers (pause-based heuristic — labels alternate on gaps)
+$('speakersToggle').addEventListener('change', (e) => {
+  state.speakers = e.target.checked;
+  renderTranscript();
+  toast(state.speakers ? 'Speaker labels on (from pauses in the clip)' : 'Speaker labels off');
+});
+
+// ── Transcript panel ───────────────────────────────────────────────────────
+const msel = new Set();
+document.querySelectorAll('.tp-tab').forEach(tab => tab.addEventListener('click', () => {
+  document.querySelectorAll('.tp-tab').forEach(t => t.classList.toggle('active', t === tab));
+  $('ttab-subtitles').hidden = tab.dataset.ttab !== 'subtitles';
+  $('ttab-script').hidden = tab.dataset.ttab !== 'script';
+  if (tab.dataset.ttab === 'script') renderScript();
+}));
+
+function speakerFor(gi) {
+  // alternate the label whenever the silence between caption lines exceeds 1s
+  let spk = 0;
+  for (let i = 1; i <= gi; i++) {
+    if (state.groups[i].start - state.groups[i - 1].end > 1.0) spk = 1 - spk;
+  }
+  return 'S' + (spk + 1);
 }
 
-// ── Style picker ───────────────────────────────────────────────────────────
+function renderTranscript() {
+  const box = $('tpLines');
+  box.innerHTML = '';
+  // groups only contain live words; walk the full word list so cut words stay
+  // visible (struck through, restorable) on the line they belong to
+  const wordToGroup = new Map();
+  state.groups.forEach((g, gi) => g.words.forEach(w => wordToGroup.set(w, gi)));
+  const lines = state.groups.map(g => ({ start: g.start, words: [] }));
+  if (!lines.length && state.words.length) lines.push({ start: state.words[0].start, words: [] });
+  let cur = 0;
+  for (const w of state.words) {
+    if (wordToGroup.has(w)) cur = wordToGroup.get(w);
+    lines[Math.min(cur, lines.length - 1)]?.words.push(w);
+  }
+  lines.forEach((lineData, gi) => {
+    const line = document.createElement('div');
+    line.className = 'tp-line';
+    line.dataset.gi = gi;
+    const time = document.createElement('span');
+    time.className = 'tp-line-time';
+    time.textContent = fmtTime(lineData.start);
+    line.appendChild(time);
+    if (state.speakers && state.groups[gi]) {
+      const spk = document.createElement('span');
+      spk.className = 'tp-line-spk';
+      spk.textContent = speakerFor(gi);
+      line.appendChild(spk);
+    }
+    const wordsEl = document.createElement('div');
+    wordsEl.className = 'tp-line-words';
+    for (const w of lineData.words) {
+      const i = state.words.indexOf(w);
+      const el = document.createElement('span');
+      el.className = 'tp-word' + (w.deleted ? ' cut' : '') + (msel.has(i) ? ' msel' : '');
+      el.dataset.i = i;
+      el.innerHTML = `<span class="wtext">${escapeHtml(w.text)}</span><span class="x" title="${w.deleted ? 'Restore word' : 'Cut word'}">${w.deleted ? '↺' : '✕'}</span>`;
+      wordsEl.appendChild(el);
+    }
+    line.appendChild(wordsEl);
+    box.appendChild(line);
+  });
+  updateWordCount();
+}
+
+function updateWordCount() {
+  const cut = state.words.filter(w => w.deleted).length;
+  $('wordCount').textContent = `${state.words.length - cut} words` + (cut ? ` · ${cut} cut` : '');
+}
+
+$('tpLines').addEventListener('click', (e) => {
+  const wEl = e.target.closest('.tp-word');
+  if (!wEl) return;
+  const i = +wEl.dataset.i;
+  const w = state.words[i];
+  state.selectedWord = i;
+  updateSelLabel();
+
+  if ($('multiSelect').checked && !e.target.classList.contains('x')) {
+    if (msel.has(i)) msel.delete(i); else msel.add(i);
+    wEl.classList.toggle('msel', msel.has(i));
+    $('multiActions').hidden = msel.size === 0;
+    return;
+  }
+  if (e.target.classList.contains('x')) {
+    pushUndo();
+    w.deleted = !w.deleted;
+    rebuildGroups();
+    renderTranscript();
+    return;
+  }
+  if (wEl.querySelector('input')) return;
+  if (video.duration) video.currentTime = Math.max(0, w.start + 0.01);
+  const span = wEl.querySelector('.wtext');
+  const input = document.createElement('input');
+  input.value = w.text;
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+  let cancelled = false;
+  const commit = () => {
+    if (cancelled) return;
+    cancelled = true; // a commit also disarms the blur that follows DOM removal
+    const val = input.value.trim();
+    if (val && val !== w.text) { pushUndo(); w.text = val; delete w.orig; }
+    rebuildGroups();
+    renderTranscript();
+  };
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape') { cancelled = true; renderTranscript(); }
+    ev.stopPropagation();
+  });
+  input.addEventListener('blur', commit);
+});
+
+$('multiSelect').addEventListener('change', (e) => {
+  if (!e.target.checked) { msel.clear(); $('multiActions').hidden = true; renderTranscript(); }
+});
+$('cutSelBtn').addEventListener('click', () => {
+  if (!msel.size) return;
+  pushUndo();
+  for (const i of msel) state.words[i].deleted = true;
+  toast(`Cut ${msel.size} words ✂`);
+  msel.clear();
+  $('multiActions').hidden = true;
+  rebuildGroups();
+  renderTranscript();
+});
+$('clearSelBtn').addEventListener('click', () => {
+  msel.clear();
+  $('multiActions').hidden = true;
+  renderTranscript();
+});
+
+$('fillerBtn').addEventListener('click', () => {
+  const fillers = new Set(CONFIG.fillerWords.map(f => f.toLowerCase()));
+  const hits = state.words.filter(w => !w.deleted && fillers.has(w.text.toLowerCase().replace(/[^a-z']/g, '')));
+  if (!hits.length) return toast('No filler words found — clean take!');
+  pushUndo();
+  hits.forEach(w => w.deleted = true);
+  rebuildGroups();
+  renderTranscript();
+  toast(`Cut ${hits.length} filler word${hits.length > 1 ? 's' : ''} ✂`);
+});
+$('restoreBtn').addEventListener('click', () => {
+  pushUndo();
+  state.words.forEach(w => w.deleted = false);
+  rebuildGroups();
+  renderTranscript();
+});
+
+function renderScript() {
+  $('scriptView').innerHTML = state.words
+    .map(w => `<span class="${w.deleted ? 'cut' : ''}">${escapeHtml(w.text)}</span>`)
+    .join(' ');
+}
+$('copyScriptBtn').addEventListener('click', async () => {
+  const text = state.words.filter(w => !w.deleted).map(w => w.text).join(' ');
+  try { await navigator.clipboard.writeText(text); toast('Script copied ⧉'); }
+  catch { toast('Copy blocked — select the text manually.'); }
+});
+
+// ── Timeline ───────────────────────────────────────────────────────────────
+function initTimeline() {
+  if (timeline) { timeline.markDirty(); return; }
+  timeline = new Timeline($('timelineCanvas'), {
+    getWords: () => state.words,
+    getGroups: () => state.groups,
+    getBroll: () => state.broll,
+    getDuration: () => video.duration || 0,
+    getTime: () => video.currentTime || 0,
+    seek: (t) => { if (exporting) return; video.currentTime = t; markDirty(); },
+    onDragStart: () => beginPending(),
+    onWordsChanged: () => { commitPending(); rebuildGroups(); updateSelLabel(); },
+    onBrollChanged: () => { pendingSnap = null; renderBrollList(); markDirty(); },
+    onSelect: (kind, i) => {
+      if (kind === 'word') { state.selectedWord = i; updateSelLabel(); }
+      else { state.selectedWord = -1; updateSelLabel(); }
+    },
+  });
+  // hook drag-start into pointerdown via the api callback
+  const origDown = timeline._down.bind(timeline);
+  timeline._down = (e) => { origDown(e); if (timeline.drag && timeline.drag.type !== 'seek' && timeline.drag.kind === 'word') beginPending(); };
+}
+function tlZoomLabel() { $('tlZoomVal').textContent = Math.round(timeline.zoom * 100) + '%'; }
+$('tlZoomIn').addEventListener('click', () => { timeline.setZoom(timeline.zoom * 2); tlZoomLabel(); });
+$('tlZoomOut').addEventListener('click', () => { timeline.setZoom(timeline.zoom / 2); tlZoomLabel(); });
+$('tlFit').addEventListener('click', () => { timeline.setZoom(1); tlZoomLabel(); });
+document.querySelectorAll('.tl-mode').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.tl-mode').forEach(b => b.classList.toggle('active', b === btn));
+  timeline?.setMode(btn.dataset.mode);
+}));
+
+function updateSelLabel() {
+  const i = state.selectedWord;
+  const w = state.words[i];
+  $('tlSel').textContent = w ? `“${w.text}” ${w.start.toFixed(2)}–${w.end.toFixed(2)}s` : '';
+  timeline?.setSelected(i);
+}
+
+// keyboard
+document.addEventListener('keydown', (e) => {
+  if (exporting) return;   // never touch playback or words mid-recording
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (e.key === ' ') { e.preventDefault(); togglePlay(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (timeline?.selectedBroll >= 0) { removeBroll(timeline.selectedBroll); return; }
+    if (state.selectedWord >= 0) {
+      const w = state.words[state.selectedWord];
+      if (!w) return;
+      pushUndo();
+      w.deleted = !w.deleted;
+      rebuildGroups();
+      renderTranscript();
+      updateSelLabel();
+      toast(w.deleted ? `Cut “${w.text}”` : `Restored “${w.text}”`);
+    }
+  }
+});
+
+// ── Templates ──────────────────────────────────────────────────────────────
 let activeCat = 'popular';
 const sampleSource = makeSampleSource();
 
@@ -178,13 +574,11 @@ function makeSampleSource() {
   const grad = g.createLinearGradient(0, 0, 270, 480);
   grad.addColorStop(0, '#1e1b4b'); grad.addColorStop(0.55, '#4c1d95'); grad.addColorStop(1, '#0f172a');
   g.fillStyle = grad; g.fillRect(0, 0, 270, 480);
-  // abstract "speaker" silhouette so behind-styles read correctly in cards
   g.fillStyle = 'rgba(0,0,0,.35)';
   g.beginPath(); g.arc(135, 250, 52, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.ellipse(135, 420, 95, 130, 0, Math.PI, 0); g.fill();
   return c;
 }
-
 const SAMPLE_WORDS = [
   { text: 'make', start: 0, end: 0.4, deleted: false },
   { text: 'it', start: 0.4, end: 0.7, deleted: false },
@@ -232,7 +626,6 @@ function drawPresetSample(cv, preset) {
   const groups = groupWords(SAMPLE_WORDS, preset);
   const sc = document.createElement('canvas');
   sc.width = cv.width; sc.height = cv.height;
-  // sample mask: the silhouette region, for behind-styles
   let mask = null;
   if (preset.behind) {
     mask = document.createElement('canvas');
@@ -245,7 +638,7 @@ function drawPresetSample(cv, preset) {
   drawFrame(c, sampleSource, 0.95, groups, preset, { mask, scratch: sc, speaker: { name: 'Neha Sharma', role: 'Founder' } });
 }
 
-$('styleGrid').addEventListener('click', async (e) => {
+$('styleGrid').addEventListener('click', (e) => {
   const card = e.target.closest('.style-card');
   if (!card) return;
   selectPreset(card.dataset.id);
@@ -254,98 +647,317 @@ $('styleGrid').addEventListener('click', async (e) => {
 
 async function selectPreset(id) {
   state.preset = getPreset(id);
+  state.overrides = {};
+  buildEff();
   rebuildGroups();
+  syncFineTune();
   $('speakerCard').hidden = !state.preset.extra.lowerThird;
   if (state.preset.behind && !maskTracker) {
     maskTracker = new MaskTracker();
     toast('Loading person-segmentation model for behind-the-subject captions…');
     const ok = await maskTracker.init();
     toast(ok ? 'Behind-the-subject captions ready ✓' : 'Segmentation unavailable — captions will render in front.');
+    markDirty();
   }
 }
 
-$('toWordsBtn').addEventListener('click', () => goStep('words'));
-
-// ── Word editor ────────────────────────────────────────────────────────────
-function renderWordEditor() {
-  const ed = $('wordEditor');
-  ed.innerHTML = '';
-  state.words.forEach((w, i) => {
-    const chip = document.createElement('span');
-    chip.className = 'word-chip' + (w.deleted ? ' cut' : '');
-    chip.dataset.i = i;
-    chip.innerHTML = `<span class="wtext">${escapeHtml(w.text)}</span><span class="x" title="Cut word">✕</span>`;
-    ed.appendChild(chip);
-  });
-  updateWordCount();
+// ── Customize ──────────────────────────────────────────────────────────────
+function toHex(color) {
+  if (/^#([0-9a-f]{6})$/i.test(color)) return color;
+  const m = /^rgba?\((\d+)[, ]+(\d+)[, ]+(\d+)/.exec(color || '');
+  if (m) return '#' + [m[1], m[2], m[3]].map(n => (+n).toString(16).padStart(2, '0')).join('');
+  return null;
 }
-
-function updateWordCount() {
-  const cut = state.words.filter(w => w.deleted).length;
-  $('wordCount').textContent = `${state.words.length - cut} words` + (cut ? ` · ${cut} cut` : '');
+function syncFineTune() {
+  const p = state.preset, o = state.overrides;
+  $('ftStyleName').textContent = '· ' + p.name;
+  $('ftSize').value = Math.round((o.size || 1) * 100);
+  $('ftSizeVal').textContent = Math.round((o.size || 1) * 100) + '%';
+  $('ftPos').value = Math.round((o.posY ?? p.pos.y) * 100);
+  $('ftPosVal').textContent = o.posY != null ? Math.round(o.posY * 100) + '%' : 'auto';
+  $('ftWords').value = o.maxWords || p.grouping.maxWords;
+  $('ftWordsVal').textContent = o.maxWords || 'auto';
+  $('ftCase').value = o.caseMode ?? '';
+  $('ftText').value = o.text || toHex(p.colors.text) || '#ffffff';
+  $('ftActive').value = o.active || toHex(p.colors.active) || '#ffe600';
 }
+function applyFineTune() { buildEff(); rebuildGroups(); renderTranscript(); }
 
-$('wordEditor').addEventListener('click', (e) => {
-  const chip = e.target.closest('.word-chip');
-  if (!chip) return;
-  const i = +chip.dataset.i;
-  const w = state.words[i];
-  if (e.target.classList.contains('x')) {
-    w.deleted = !w.deleted;
-    chip.classList.toggle('cut', w.deleted);
-    rebuildGroups();
-    updateWordCount();
+$('ftSize').addEventListener('input', (e) => {
+  state.overrides.size = e.target.value / 100;
+  $('ftSizeVal').textContent = e.target.value + '%';
+  applyFineTune();
+});
+$('ftPos').addEventListener('input', (e) => {
+  state.overrides.posY = e.target.value / 100;
+  $('ftPosVal').textContent = e.target.value + '%';
+  applyFineTune();
+});
+$('ftWords').addEventListener('input', (e) => {
+  state.overrides.maxWords = +e.target.value;
+  $('ftWordsVal').textContent = e.target.value;
+  applyFineTune();
+});
+$('ftCase').addEventListener('change', (e) => {
+  if (e.target.value === '') delete state.overrides.caseMode;
+  else state.overrides.caseMode = e.target.value;
+  applyFineTune();
+});
+$('ftText').addEventListener('input', (e) => { state.overrides.text = e.target.value; applyFineTune(); });
+$('ftActive').addEventListener('input', (e) => { state.overrides.active = e.target.value; applyFineTune(); });
+$('ftReset').addEventListener('click', () => {
+  pushUndo();
+  state.overrides = {};
+  syncFineTune();
+  applyFineTune();
+  toast('Style reset to defaults');
+});
+$('spkName').addEventListener('input', (e) => { state.speaker.name = e.target.value; markDirty(); });
+$('spkRole').addEventListener('input', (e) => { state.speaker.role = e.target.value; markDirty(); });
+
+// ── Canvas direct manipulation ─────────────────────────────────────────────
+function canvasPoint(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (canvas.width / r.width),
+    y: (e.clientY - r.top) * (canvas.height / r.height),
+  };
+}
+let canvasDrag = null;
+canvas.addEventListener('pointerdown', (e) => {
+  if (exporting) return;
+  if ($('stageEmpty') && !$('stageEmpty').hidden) return;
+  const p = canvasPoint(e);
+  const b = lastBounds;
+  const pad = canvas.width * 0.02;
+  if (b && p.x >= b.minX - pad && p.x <= b.maxX + pad && p.y >= b.minY - pad && p.y <= b.maxY + pad) {
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
+    state.selection = 'caption';
+    const handle = canvas.width * 0.035;
+    const onCorner = Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle;
+    canvasDrag = {
+      mode: onCorner ? 'resize' : 'move',
+      x0: p.x, y0: p.y,
+      posX0: state.overrides.posX ?? state.eff.pos.x ?? 0.5,
+      posY0: state.overrides.posY ?? state.eff.pos.y,
+      size0: state.overrides.size || 1,
+      moved: false,
+    };
+  } else {
+    state.selection = null;
+  }
+  markDirty();
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!canvasDrag) {
+    if (state.selection && lastBounds) {
+      const p = canvasPoint(e);
+      const b = lastBounds, handle = canvas.width * 0.035;
+      canvas.style.cursor = (Math.abs(p.x - b.maxX) < handle && Math.abs(p.y - b.maxY) < handle) ? 'nwse-resize'
+        : (p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY) ? 'grab' : 'default';
+    }
     return;
   }
-  if (chip.querySelector('input')) return;
-  // seek preview to this word and open inline edit
-  if (video.duration) video.currentTime = Math.max(0, w.start + 0.01);
-  const span = chip.querySelector('.wtext');
-  const input = document.createElement('input');
-  input.value = w.text;
-  span.replaceWith(input);
-  input.focus();
-  input.select();
-  const commit = () => {
-    const val = input.value.trim();
-    if (val) w.text = val; // empty edit = keep original
-    renderWordEditor();
-    rebuildGroups();
-  };
-  input.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') commit();
-    if (ev.key === 'Escape') renderWordEditor();
-  });
-  input.addEventListener('blur', commit);
-});
-
-$('fillerBtn').addEventListener('click', () => {
-  let n = 0;
-  const fillers = new Set(CONFIG.fillerWords.map(f => f.toLowerCase()));
-  for (const w of state.words) {
-    if (!w.deleted && fillers.has(w.text.toLowerCase().replace(/[^a-z']/g, ''))) { w.deleted = true; n++; }
+  const p = canvasPoint(e);
+  if (!canvasDrag.moved && (Math.abs(p.x - canvasDrag.x0) + Math.abs(p.y - canvasDrag.y0)) > 3) {
+    canvasDrag.moved = true;
+    beginPending();
   }
-  renderWordEditor();
-  rebuildGroups();
-  toast(n ? `Cut ${n} filler word${n > 1 ? 's' : ''} ✂` : 'No filler words found — clean take!');
+  if (!canvasDrag.moved) return;
+  if (canvasDrag.mode === 'move') {
+    state.overrides.posX = clamp(canvasDrag.posX0 + (p.x - canvasDrag.x0) / canvas.width, 0.12, 0.88);
+    state.overrides.posY = clamp(canvasDrag.posY0 + (p.y - canvasDrag.y0) / canvas.height, 0.08, 0.92);
+  } else {
+    state.overrides.size = clamp(canvasDrag.size0 * (1 + (p.x - canvasDrag.x0) / (canvas.width * 0.6)), 0.5, 2.2);
+  }
+  buildEff();
+  syncFineTune();
+  markDirty();
+});
+canvas.addEventListener('pointerup', (e) => {
+  if (canvasDrag?.moved) commitPending();
+  canvasDrag = null;
+  try { canvas.releasePointerCapture(e.pointerId); } catch { /* released */ }
 });
 
-$('restoreBtn').addEventListener('click', () => {
-  state.words.forEach(w => w.deleted = false);
-  renderWordEditor();
-  rebuildGroups();
+function drawSelectionChrome() {
+  if (state.selection !== 'caption' || !lastBounds) return;
+  const b = lastBounds;
+  const W = canvas.width;
+  const pad = W * 0.015;
+  ctx.save();
+  ctx.strokeStyle = '#5145cd';
+  ctx.lineWidth = Math.max(1.5, W * 0.003);
+  ctx.setLineDash([6, 5]);
+  ctx.strokeRect(b.minX - pad, b.minY - pad, (b.maxX - b.minX) + pad * 2, (b.maxY - b.minY) + pad * 2);
+  ctx.setLineDash([]);
+  // handles
+  const hs = W * 0.014;
+  ctx.fillStyle = '#5145cd';
+  for (const [hx, hy] of [[b.minX - pad, b.minY - pad], [b.maxX + pad, b.minY - pad], [b.minX - pad, b.maxY + pad], [b.maxX + pad, b.maxY + pad]]) {
+    ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+  }
+  // label
+  const label = state.eff.behind ? 'BEHIND' : 'CAPTION';
+  ctx.font = `800 ${Math.round(W * 0.022)}px Inter`;
+  const tw = ctx.measureText(label).width;
+  ctx.fillStyle = '#5145cd';
+  ctx.fillRect(b.minX - pad, b.minY - pad - W * 0.042, tw + W * 0.024, W * 0.036);
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, b.minX - pad + W * 0.012, b.minY - pad - W * 0.024);
+  ctx.restore();
+}
+
+// canvas pills
+$('safeBtn').addEventListener('click', () => {
+  state.showSafe = !state.showSafe;
+  $('safeBtn').classList.toggle('on', state.showSafe);
+  markDirty();
+});
+$('cutoutBtn').addEventListener('click', async () => {
+  if (!state.eff.behind) return toast('Sharper cutouts apply to Behind-the-Person styles — pick one in Templates.');
+  if (!maskTracker) { maskTracker = new MaskTracker(); await maskTracker.init(); }
+  const sharp = maskTracker.minIntervalMs > 40;
+  maskTracker.minIntervalMs = sharp ? 33 : 66;
+  $('cutoutBtn').classList.toggle('on', sharp);
+  toast(sharp ? 'Sharper cutouts on — segmentation at full rate ✨' : 'Standard cutouts (battery-friendly)');
+  markDirty();
+});
+$('aspectSel').addEventListener('change', (e) => {
+  if (exporting) { e.target.value = state.aspect; return; }
+  setAspect(e.target.value);
 });
 
-$('toPackageBtn').addEventListener('click', () => goStep('package'));
+function setAspect(aspect) {
+  state.aspect = aspect;
+  const dims = { '9:16': [540, 960], '1:1': [720, 720], '16:9': [960, 540] }[aspect];
+  canvas.width = dims[0]; canvas.height = dims[1];
+  scratch.width = dims[0]; scratch.height = dims[1];
+  const wrap = $('canvasWrap');
+  wrap.classList.toggle('wide', aspect === '16:9');
+  wrap.classList.toggle('square', aspect === '1:1');
+  state.styleVersion++;
+  scheduleConcepts();
+  markDirty();
+}
+setAspect('9:16');
 
-// ── Hooks ──────────────────────────────────────────────────────────────────
+// ── B-roll ─────────────────────────────────────────────────────────────────
+let brollSeq = 0;
+$('brollAddBtn').addEventListener('click', () => $('brollFile').click());
+$('brollFile').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) addBrollFile(f);
+  e.target.value = '';
+});
+// paste or drop anywhere adds b-roll at the playhead (once a clip is loaded)
+document.addEventListener('paste', (e) => {
+  if (!state.words.length) return;
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/') || i.type.startsWith('video/'));
+  if (item) { addBrollFile(item.getAsFile()); e.preventDefault(); }
+});
+for (const target of [$('canvasWrap'), $('timelineBar')]) {
+  target.addEventListener('dragover', (e) => { if (state.words.length) e.preventDefault(); });
+  target.addEventListener('drop', (e) => {
+    if (!state.words.length) return;
+    const f = e.dataTransfer?.files?.[0];
+    if (f && (f.type.startsWith('image/') || f.type.startsWith('video/'))) {
+      e.preventDefault();
+      addBrollFile(f);
+    }
+  });
+}
+
+function addBrollFile(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const kind = file.type.startsWith('video/') ? 'video' : 'image';
+  const item = { id: ++brollSeq, start: video.currentTime || 0, dur: 3, kind, url, name: file.name };
+  if (kind === 'image') {
+    const img = new Image();
+    img.onload = () => { markDirty(); };
+    img.src = url;
+    item.el = img;
+    finishAdd();
+  } else {
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.src = url;
+    v.addEventListener('loadedmetadata', () => {
+      item.dur = Math.min(Math.max(MINB(v.duration), 0.5), 6, videoDurLeft(item.start));
+      finishAdd();
+    }, { once: true });
+    item.el = v;
+  }
+  function finishAdd() {
+    item.dur = Math.min(item.dur, videoDurLeft(item.start));
+    state.broll.push(item);
+    state.broll.sort((a, b) => a.start - b.start);
+    renderBrollList();
+    markDirty();
+    toast(`B-roll added at ${fmtTime(item.start)} 🎞`);
+  }
+}
+const MINB = (d) => isFinite(d) ? d : 3;
+const videoDurLeft = (start) => Math.max(0.5, (video.duration || 10) - start);
+
+function removeBroll(i) {
+  const b = state.broll[i];
+  if (!b) return;
+  URL.revokeObjectURL(b.url);
+  state.broll.splice(i, 1);
+  if (timeline) timeline.selectedBroll = -1;
+  renderBrollList();
+  markDirty();
+  toast('B-roll removed');
+}
+
+function renderBrollList() {
+  const list = $('brollList');
+  if (!state.broll.length) { list.innerHTML = '<p class="tp-hint">No b-roll yet.</p>'; return; }
+  list.innerHTML = '';
+  state.broll.forEach((b, i) => {
+    const row = document.createElement('div');
+    row.className = 'broll-item';
+    const thumb = b.kind === 'image' ? `<img src="${b.url}" alt="">` : `<video src="${b.url}" muted></video>`;
+    row.innerHTML = `${thumb}
+      <div class="bi-meta"><div class="bi-name">${escapeHtml(b.name)}</div>
+      <div class="bi-time">${fmtTime(b.start)} → ${fmtTime(b.start + b.dur)}</div></div>
+      <button class="bi-del" title="Remove">✕</button>`;
+    row.querySelector('.bi-del').addEventListener('click', () => removeBroll(i));
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.bi-del')) return;
+      video.currentTime = b.start + 0.01;
+      markDirty();
+    });
+    list.appendChild(row);
+  });
+}
+
+// keep b-roll video elements in sync with the main clock
+function syncBroll(t, playing) {
+  for (const b of state.broll) {
+    if (b.kind !== 'video' || !b.el) continue;
+    const active = t >= b.start && t < b.start + b.dur;
+    const local = Math.max(0, Math.min(t - b.start, (b.el.duration || b.dur) - 0.05));
+    if (active) {
+      if (playing && b.el.paused) { b.el.currentTime = local; b.el.play().catch(() => {}); }
+      if (!playing && Math.abs(b.el.currentTime - local) > 0.2) b.el.currentTime = local;
+    } else if (!b.el.paused) {
+      b.el.pause();
+    }
+  }
+}
+
+// ── Hooks / title ──────────────────────────────────────────────────────────
 function renderHooks() {
   const hooks = suggestHooks(state.words);
   const list = $('hookList');
   list.innerHTML = hooks.length
-    ? hooks.map((h, i) => `<button class="hook-item ${i === 0 && !state.hook ? '' : ''}" data-text="${escapeHtml(h.text)}">“${escapeHtml(h.text)}”<span class="score">FROM TRANSCRIPT</span></button>`).join('')
-    : '<p class="hint">Not enough transcript to suggest hooks yet.</p>';
-  if (!state.hook && hooks.length) { state.hook = hooks[0].text; }
+    ? hooks.map(h => `<button class="hook-item" data-text="${escapeHtml(h.text)}">“${escapeHtml(h.text)}”<span class="score">FROM TRANSCRIPT</span></button>`).join('')
+    : '<p class="tp-hint">Not enough transcript to suggest hooks yet.</p>';
+  if (!state.hook && hooks.length) state.hook = hooks[0].text;
   [...list.children].forEach(el => el.classList?.toggle('selected', el.dataset?.text === state.hook));
 }
 $('hookList').addEventListener('click', (e) => {
@@ -354,224 +966,249 @@ $('hookList').addEventListener('click', (e) => {
   state.hook = item.dataset.text;
   $('hookCustom').value = '';
   [...$('hookList').children].forEach(el => el.classList?.toggle('selected', el === item));
-  drawThumb();
+  scheduleConcepts();
+  markDirty();
 });
 $('hookCustom').addEventListener('input', (e) => {
-  if (e.target.value.trim()) {
-    state.hook = e.target.value.trim();
+  const val = e.target.value.trim();
+  if (val) {
+    state.hook = val;
     [...$('hookList').children].forEach(el => el.classList?.remove('selected'));
-    drawThumb();
+  } else {
+    // cleared → fall back to the top suggestion so the state matches the UI
+    const first = $('hookList').querySelector('.hook-item');
+    state.hook = first?.dataset.text || '';
+    if (first) first.classList.add('selected');
   }
+  scheduleConcepts();
+  markDirty();
+});
+$('hookBurn').addEventListener('change', (e) => {
+  state.hookBurn = e.target.checked;
+  markDirty();
+  if (state.hookBurn) { video.currentTime = 0.4; toast('Hook title will show for the first 2.5 s'); }
 });
 
-// ── Speaker ────────────────────────────────────────────────────────────────
-$('spkName').addEventListener('input', (e) => state.speaker.name = e.target.value);
-$('spkRole').addEventListener('input', (e) => state.speaker.role = e.target.value);
-
-// ── Thumbnail ──────────────────────────────────────────────────────────────
+// ── Thumbnails ─────────────────────────────────────────────────────────────
 const thumbVideo = document.createElement('video');
 thumbVideo.muted = true; thumbVideo.playsInline = true; thumbVideo.preload = 'auto';
 let thumbReady = false;
+let conceptsPending = false;
 
+const THUMB_DIMS = {
+  '9:16': { sw: 180, sh: 320, bw: 1080, bh: 1920 },
+  '1:1':  { sw: 240, sh: 240, bw: 1080, bh: 1080 },
+  '16:9': { sw: 320, sh: 180, bw: 1920, bh: 1080 },
+};
 function ensureThumbVideo() {
   if (thumbVideo.src !== state.url && state.url) {
     thumbVideo.src = state.url;
     thumbVideo.load();
     thumbReady = false;
-    thumbVideo.addEventListener('loadeddata', () => { thumbReady = true; drawThumb(); }, { once: true });
+    thumbVideo.addEventListener('loadeddata', () => { thumbReady = true; scheduleConcepts(); }, { once: true });
   }
 }
-
 $('thumbScrub').addEventListener('input', (e) => {
   if (!video.duration) return;
   state.thumbTime = (e.target.value / 100) * video.duration;
-  drawThumb();
+  scheduleConcepts();
 });
-$('thumbStyle').addEventListener('change', drawThumb);
-$('thumbText').addEventListener('input', drawThumb);
+$('thumbText').addEventListener('input', scheduleConcepts);
 
-function drawThumb() {
+let conceptsQueued = false;
+function scheduleConcepts() {
+  if (state.tool !== 'thumbnail') return;
   ensureThumbVideo();
   if (!thumbReady) return;
-  const seekTo = Math.min(state.thumbTime, (thumbVideo.duration || 1) - 0.05);
-  const onSeeked = () => renderThumbTo($('thumbCanvas').getContext('2d'), 270, 480);
-  thumbVideo.removeEventListener('seeked', onSeeked);
-  thumbVideo.addEventListener('seeked', onSeeked, { once: true });
-  thumbVideo.currentTime = Math.max(0.01, seekTo);
+  if (conceptsPending) { conceptsQueued = true; return; } // latest request wins
+  conceptsPending = true;
+  const seekTo = Math.max(0.01, Math.min(state.thumbTime, (thumbVideo.duration || 1) - 0.05));
+  thumbVideo.addEventListener('seeked', () => {
+    conceptsPending = false;
+    renderConcepts();
+    if (conceptsQueued) { conceptsQueued = false; scheduleConcepts(); }
+  }, { once: true });
+  thumbVideo.currentTime = seekTo;
 }
-
 function thumbTitle() {
   return ($('thumbText').value.trim() || state.hook || 'Watch this').toUpperCase();
 }
-
-function renderThumbTo(c, W, H) {
-  const styleId = $('thumbStyle').value;
-  c.canvas.width = W; c.canvas.height = H;
-  drawCover(c, thumbVideo, W, H);
-
-  const title = thumbTitle();
-  if (styleId === 'clean') return;
-
-  if (styleId === 'scene') {
-    // duotone-ish stylized treatment
-    c.save();
-    c.globalCompositeOperation = 'color';
-    const g = c.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, '#7c3aed'); g.addColorStop(1, '#0ea5e9');
-    c.fillStyle = g; c.fillRect(0, 0, W, H);
-    c.globalCompositeOperation = 'overlay';
-    c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(0, 0, W, H);
-    c.restore();
-  }
-
-  // dim gradient for legibility
-  const dim = c.createLinearGradient(0, H * 0.35, 0, H);
-  dim.addColorStop(0, 'rgba(0,0,0,0)');
-  dim.addColorStop(1, 'rgba(0,0,0,.75)');
-  c.fillStyle = dim; c.fillRect(0, 0, W, H);
-
-  const lines = wrapTitle(c, title, W, styleId);
-  const styles = {
-    bold:      { font: (s) => `400 ${s}px "Archivo Black"`, size: W * 0.13, fill: '#ffffff', stroke: '#000', lh: 1.12 },
-    tape:      { font: (s) => `800 ${s}px Montserrat`, size: W * 0.11, fill: '#111', tape: '#ffe600', lh: 1.35 },
-    editorial: { font: (s) => `italic 600 ${s}px "Playfair Display"`, size: W * 0.115, fill: '#ffffff', lh: 1.2 },
-    scene:     { font: (s) => `400 ${s}px "Archivo Black"`, size: W * 0.125, fill: '#ffe600', stroke: '#000', lh: 1.12 },
-  };
-  const st = styles[styleId] || styles.bold;
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  const totalH = lines.length * st.size * st.lh;
-  let y = H * 0.78 - totalH / 2 + st.size / 2;
-  for (const line of lines) {
-    c.font = st.font(st.size);
-    if (st.tape) {
-      const tw = c.measureText(line).width;
-      c.save();
-      c.translate(W / 2, y);
-      c.rotate(-0.015);
-      c.fillStyle = st.tape;
-      c.fillRect(-tw / 2 - st.size * 0.25, -st.size * 0.62, tw + st.size * 0.5, st.size * 1.24);
-      c.fillStyle = st.fill;
-      c.fillText(line, 0, st.size * 0.04);
-      c.restore();
-    } else {
-      if (st.stroke) {
-        c.lineJoin = 'round';
-        c.strokeStyle = st.stroke;
-        c.lineWidth = st.size * 0.14;
-        c.strokeText(line, W / 2, y);
-      }
-      c.fillStyle = st.fill;
-      c.fillText(line, W / 2, y);
-    }
-    y += st.size * st.lh;
-  }
-  c.textAlign = 'left';
+function renderConcepts() {
+  const d = THUMB_DIMS[state.aspect];
+  document.querySelectorAll('#conceptGrid .concept').forEach(btn => {
+    btn.classList.toggle('wide', state.aspect === '16:9');
+    btn.classList.toggle('square', state.aspect === '1:1');
+    renderThumb(btn.querySelector('canvas').getContext('2d'), d.sw, d.sh, {
+      source: thumbVideo,
+      styleId: btn.dataset.style,
+      title: btn.dataset.style === 'clean' ? '' : thumbTitle(),
+    });
+  });
 }
-
-function wrapTitle(c, title, W, styleId) {
-  const words = title.split(/\s+/).slice(0, 10);
-  const lines = [];
-  let cur = '';
-  c.font = `400 ${W * 0.12}px "Archivo Black"`;
-  for (const w of words) {
-    const test = cur ? cur + ' ' + w : w;
-    if (c.measureText(test).width > W * 0.85 && cur) { lines.push(cur); cur = w; }
-    else cur = test;
-  }
-  if (cur) lines.push(cur);
-  return lines.slice(0, 4);
-}
-
+$('conceptGrid').addEventListener('click', (e) => {
+  const btn = e.target.closest('.concept');
+  if (!btn) return;
+  state.thumbStyle = btn.dataset.style;
+  document.querySelectorAll('#conceptGrid .concept').forEach(el => el.classList.toggle('selected', el === btn));
+});
 $('thumbDownload').addEventListener('click', () => {
   if (!thumbReady) return toast('Load a clip first');
+  const d = THUMB_DIMS[state.aspect];
   const big = document.createElement('canvas');
-  renderThumbTo(big.getContext('2d'), 1080, 1920);
+  renderThumb(big.getContext('2d'), d.bw, d.bh, {
+    source: thumbVideo,
+    styleId: state.thumbStyle,
+    title: state.thumbStyle === 'clean' ? '' : thumbTitle(),
+  });
   big.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'popshot-thumbnail.png';
+    a.download = `popshot-thumbnail-${state.thumbStyle}.png`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }, 'image/png');
   toast('Thumbnail saved ⬇');
 });
 
-$('toExportBtn').addEventListener('click', () => goStep('export'));
-
-// ── Preview loop ───────────────────────────────────────────────────────────
-function setAspect(aspect) {
-  state.aspect = aspect;
-  const dims = { '9:16': [540, 960], '1:1': [720, 720], '16:9': [960, 540] }[aspect];
-  canvas.width = dims[0]; canvas.height = dims[1];
-  scratch.width = dims[0]; scratch.height = dims[1];
-  const frame = $('previewFrame');
-  frame.classList.toggle('wide', aspect === '16:9');
-  frame.classList.toggle('square', aspect === '1:1');
-}
-$('aspectSel').addEventListener('change', (e) => setAspect(e.target.value));
-setAspect('9:16');
-
+// ── Transport ──────────────────────────────────────────────────────────────
 function fmtTime(s) {
   if (!isFinite(s)) return '0:00';
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 }
-function updateTimeLabel() {
-  $('timeLabel').textContent = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration || 0)}`;
-}
-
-$('playBtn').addEventListener('click', () => {
-  if (!video.src) return;
+function togglePlay() {
+  if (!video.src || exporting) return;
   if (video.paused) { video.play(); $('playBtn').textContent = '❚❚'; }
   else { video.pause(); $('playBtn').textContent = '▶'; }
-});
+}
+$('playBtn').addEventListener('click', togglePlay);
 video.addEventListener('ended', () => { $('playBtn').textContent = '▶'; });
+video.addEventListener('pause', () => { $('playBtn').textContent = '▶'; });
+$('muteBtn').addEventListener('click', () => {
+  video.muted = !video.muted;
+  $('muteBtn').textContent = video.muted ? '🔇' : '🔊';
+});
 $('scrubber').addEventListener('input', (e) => {
-  if (video.duration) video.currentTime = +e.target.value;
+  if (video.duration && !exporting) { video.currentTime = +e.target.value; markDirty(); }
 });
 
-let lastChipIdx = -1;
+// ── Preview loop ───────────────────────────────────────────────────────────
+function drawSafeArea() {
+  const W = canvas.width, H = canvas.height;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,230,0,.6)';
+  ctx.setLineDash([8, 7]);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(W * 0.05, H * 0.06, W * 0.9, H * 0.78);
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,230,0,.1)';
+  ctx.fillRect(0, H * 0.84, W, H * 0.16);
+  ctx.fillRect(W * 0.86, H * 0.3, W * 0.14, H * 0.44);
+  ctx.font = `700 ${Math.round(W * 0.026)}px Inter`;
+  ctx.fillStyle = 'rgba(255,230,0,.85)';
+  ctx.fillText('SAFE ZONE', W * 0.05 + 8, H * 0.06 + 18);
+  ctx.restore();
+}
+
+function frameOpts() {
+  return {
+    scratch,
+    speaker: state.speaker,
+    layoutVersion: state.styleVersion,
+    hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
+    broll: state.broll,
+  };
+}
+
+function drawPreview() {
+  const t = video.currentTime;
+  const opts = frameOpts();
+  if (state.eff.behind && maskTracker?.ready) opts.mask = maskTracker.update(video, performance.now());
+  const res = drawFrame(ctx, video, t, state.groups, state.eff, opts);
+  lastBounds = res?.bounds || null;
+  if (state.showSafe) drawSafeArea();
+  drawSelectionChrome();
+}
+
+let lastTimeText = '';
+let lastWordIdx = -1;
+let lastLineIdx = -1;
 function previewLoop() {
   requestAnimationFrame(previewLoop);
+  timeline?.draw(!video.paused && !exporting);
   if (!video.src || video.readyState < 2 || exporting) return;
+  const playing = !video.paused && !video.ended;
   const t = video.currentTime;
-  if (!video.paused) { $('scrubber').value = t; }
-  updateTimeLabel();
 
-  let mask = null;
-  if (state.preset.behind && maskTracker?.ready) {
-    mask = maskTracker.update(video, performance.now());
+  const txt = fmtTime(t);
+  if (txt !== lastTimeText) {
+    lastTimeText = txt;
+    $('timeCur').textContent = txt;
+    $('tlTime').textContent = `${txt} / ${fmtTime(video.duration || 0)}`;
   }
-  drawFrame(ctx, video, t, state.groups, state.preset, { mask, scratch, speaker: state.speaker });
+  if (playing) $('scrubber').value = t;
 
-  // highlight the word being spoken in the transcript editor
-  if (state.step === 'words' && !video.paused) {
+  syncBroll(t, playing);
+  if (!playing && !needsDraw) return;
+  needsDraw = false;
+  drawPreview();
+
+  // highlight the word + line being spoken in the transcript panel
+  if (state.tool === 'transcript' && playing) {
     const idx = state.words.findIndex(w => !w.deleted && t >= w.start && t < w.end);
-    if (idx !== lastChipIdx) {
-      lastChipIdx = idx;
-      document.querySelectorAll('.word-chip.playing').forEach(el => el.classList.remove('playing'));
-      if (idx >= 0) {
-        const chip = document.querySelector(`.word-chip[data-i="${idx}"]`);
-        if (chip) { chip.classList.add('playing'); chip.scrollIntoView({ block: 'nearest' }); }
+    if (idx !== lastWordIdx) {
+      lastWordIdx = idx;
+      document.querySelectorAll('.tp-word.playing').forEach(el => el.classList.remove('playing'));
+      if (idx >= 0) document.querySelector(`.tp-word[data-i="${idx}"]`)?.classList.add('playing');
+    }
+    const li = state.groups.findIndex(g => t >= g.start && t < g.hold);
+    if (li !== lastLineIdx) {
+      lastLineIdx = li;
+      document.querySelectorAll('.tp-line.current').forEach(el => el.classList.remove('current'));
+      if (li >= 0) {
+        const line = document.querySelector(`.tp-line[data-gi="${li}"]`);
+        if (line) { line.classList.add('current'); line.scrollIntoView({ block: 'nearest' }); }
       }
     }
   }
 }
 requestAnimationFrame(previewLoop);
 
+// rAF pauses in hidden/occluded windows; this watchdog keeps seeks and edits
+// rendering (cheap: only fires when something is actually dirty)
+setInterval(() => {
+  if (needsDraw && video.src && video.readyState >= 2 && !exporting) {
+    needsDraw = false;
+    drawPreview();
+    timeline?.draw(false);
+  }
+}, 250);
+
 // ── Export ─────────────────────────────────────────────────────────────────
+$('exportOpenBtn').addEventListener('click', () => {
+  if (!state.groups.length) return toast('Transcribe your clip first — captions are the whole point ✦');
+  $('exportModal').hidden = false;
+  renderExportMeta();
+});
+$('exportCloseBtn').addEventListener('click', () => { if (!exporting) $('exportModal').hidden = true; });
+$('exportModal').addEventListener('click', (e) => {
+  if (e.target === $('exportModal') && !exporting) $('exportModal').hidden = true;
+});
+
 async function renderExportMeta() {
   const size = CONFIG.export.sizes[state.aspect];
+  $('exportMeta').innerHTML = 'Probing this browser’s encoders…';
   const mime = await findWorkingMime(size.w, size.h);
   const fmt = mime.startsWith('video/mp4') ? 'MP4 · H.264' : 'WebM';
   $('exportMeta').innerHTML =
     `RESOLUTION&nbsp; ${size.w} × ${size.h}<br>` +
     `FORMAT&nbsp;&nbsp;&nbsp;&nbsp; ${fmt} · ${CONFIG.export.fps} fps<br>` +
     `STYLE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${state.preset.name}<br>` +
-    `DURATION&nbsp;&nbsp; ${fmtTime(video.duration || 0)}`;
+    `DURATION&nbsp;&nbsp; ${fmtTime(video.duration || 0)}` +
+    (state.broll.length ? `<br>B-ROLL&nbsp;&nbsp;&nbsp;&nbsp; ${state.broll.length} cutaway${state.broll.length > 1 ? 's' : ''}` : '') +
+    (state.hookBurn && state.hook ? `<br>HOOK&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; burned in for 2.5 s` : '');
   $('exportNote').textContent = mime.startsWith('video/mp4')
     ? ''
-    : 'This browser records WebM (plays everywhere modern; convert to MP4 with ffmpeg if a platform requires it). Chrome on macOS exports MP4 directly.';
+    : 'This browser records WebM (plays everywhere modern; convert to MP4 with ffmpeg if a platform requires it). Chrome on desktop usually exports MP4 directly.';
 }
 
 let abortCtl = null;
@@ -585,27 +1222,32 @@ $('exportBtn').addEventListener('click', async () => {
   $('exportProgress').hidden = false;
   $('exportDone').hidden = true;
   try {
-    if (state.preset.behind && !maskTracker) {
+    if (state.eff.behind && !maskTracker) {
       maskTracker = new MaskTracker();
       await maskTracker.init();
     }
     const { blob, ext } = await exportVideo({
       video,
       groups: state.groups,
-      preset: state.preset,
+      preset: state.eff,
       aspect: state.aspect,
       maskTracker,
       speaker: state.speaker,
+      layoutVersion: state.styleVersion,
+      hookTitle: state.hookBurn && state.hook ? { text: state.hook, until: 2.5 } : null,
+      broll: state.broll,
+      prepFrame: (t) => syncBroll(t, true),
       signal: abortCtl.signal,
       onProgress: (p) => {
         $('exportBar').style.width = (p * 100).toFixed(1) + '%';
         $('exportMsg').textContent = `Rendering… ${(p * 100).toFixed(0)}%  (plays through the clip once)`;
       },
     });
-    const url = URL.createObjectURL(blob);
     const link = $('downloadLink');
+    if (link.href.startsWith('blob:')) URL.revokeObjectURL(link.href); // free the previous render
+    const url = URL.createObjectURL(blob);
     link.href = url;
-    link.download = `popshot-short.${ext}`;
+    link.download = `${($('projName').value || 'popshot-short').replace(/[^\w-]+/g, '-')}.${ext}`;
     $('exportDoneMsg').textContent = `${(blob.size / 1e6).toFixed(1)} MB · ${state.preset.name} · ${state.aspect}` + (state.hook ? ` · hook: “${state.hook}”` : '');
     $('exportDone').hidden = false;
     link.click();
@@ -618,11 +1260,16 @@ $('exportBtn').addEventListener('click', async () => {
     $('exportBtn').disabled = false;
     $('cancelExportBtn').hidden = true;
     $('exportProgress').hidden = true;
+    markDirty();
   }
 });
 $('cancelExportBtn').addEventListener('click', () => abortCtl?.abort());
 
 // ── Utils ──────────────────────────────────────────────────────────────────
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// debug handle for automated tests (harmless in production)
+window.__ps = { state, get bounds() { return lastBounds; }, markDirty, rebuildGroups };

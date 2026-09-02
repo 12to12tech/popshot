@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Popshot Tools — Thumbnail Maker</title>
+<meta name="description" content="Four thumbnail concepts from any video frame — free, in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="gfonts" rel="stylesheet" href="">
+<link rel="stylesheet" href="css/landing.css">
+<style>
+  .tool-wrap { max-width: 900px; margin: 0 auto; padding: 50px 5vw 90px; }
+  .tool-card {
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 22px;
+    padding: 24px; box-shadow: 0 18px 50px rgba(22,22,28,.08); margin-top: 28px;
+  }
+  .tool-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+  @media (max-width: 700px) { .tool-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tool-thumb {
+    border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; background: #000;
+    display: flex; flex-direction: column; padding: 0; cursor: pointer; color: var(--text);
+  }
+  .tool-thumb canvas { width: 100%; aspect-ratio: 9/16; display: block; }
+  .tool-thumb span { font: 700 12px Inter; padding: 8px; background: var(--bg2); }
+  .tool-thumb small { font: 600 10px Inter; color: var(--brand); padding: 0 8px 8px; background: var(--bg2); }
+  .tool-thumb:hover { border-color: var(--brand); }
+  .tool-field { display: block; margin: 14px 0; }
+  .tool-field > span { display: block; font: 600 12px Inter; color: var(--muted); margin-bottom: 6px; }
+  .tool-field input[type=text] {
+    width: 100%; border: 1px solid var(--line2); border-radius: 10px; padding: 11px; font: 500 14px Inter;
+    background: var(--bg);
+  }
+  .tool-field input[type=range] { width: 100%; accent-color: var(--brand); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="logo" href="index.html">✦ Popshot</a>
+  <nav class="nav-links">
+    <a href="index.html#styles">Styles</a>
+    <a href="index.html#how">How it works</a>
+    <a href="tools.html">Tools</a>
+    <a href="index.html#pricing">Pricing</a>
+  </nav>
+  <a class="btn btn-primary" href="editor.html">＋ Create →</a>
+</header>
+
+<main class="tool-wrap">
+  <div class="kicker">FREE TOOL</div>
+  <h1 style="font-size:clamp(32px,5vw,52px);font-weight:900;letter-spacing:-2px;line-height:1.05;margin-bottom:12px">Thumbnail maker</h1>
+  <p class="lead">Four distinct cover concepts from any frame of your video — rendered in your browser, downloaded as 1080×1920 PNGs. No account, nothing uploaded.</p>
+
+  <div class="tool-card">
+    <div class="hero-drop" id="toolDrop">
+      <div class="hd-plus">＋</div>
+      <p id="toolDropLabel"><strong>Drop video</strong> or click to upload</p>
+      <span class="hd-sub">MP4 · MOV · WebM</span>
+      <input type="file" id="toolFile" accept="video/*" hidden>
+    </div>
+
+    <div id="toolControls" hidden>
+      <label class="tool-field"><span>Frame</span>
+        <input type="range" id="toolScrub" min="0" max="100" value="12" step="0.1">
+      </label>
+      <label class="tool-field"><span>Thumbnail text</span>
+        <input type="text" id="toolText" placeholder="STOP WASTING THE FIRST 5 SECONDS" value="Watch this before you post">
+      </label>
+      <div class="tool-grid" id="toolGrid"></div>
+      <p class="tiny">Click any concept to download it as a 1080×1920 PNG.</p>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <span>✦ Popshot — a self-hosted, in-browser caption studio.</span>
+  <span>Built as a functional clone study. Not affiliated with makemoonshot.co.</span>
+</footer>
+
+<script type="module" src="js/tools.js"></script>
+</body>
+</html>

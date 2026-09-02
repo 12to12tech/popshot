@@ -14,7 +14,7 @@ async function getPipeline(modelKey, onProgress) {
   const modelId = CONFIG.transcription.models[modelKey] || CONFIG.transcription.models.fast;
   if (pipelinePromise && loadedModel === modelId) return pipelinePromise;
   loadedModel = modelId;
-  pipelinePromise = (async () => {
+  const attempt = (async () => {
     const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3');
     env.allowLocalModels = false;
     let device = 'wasm', dtype = 'q8';
@@ -30,6 +30,11 @@ async function getPipeline(modelKey, onProgress) {
       },
     });
   })();
+  // don't cache failures — a dropped connection must not poison every retry
+  attempt.catch(() => {
+    if (pipelinePromise === attempt) { pipelinePromise = null; loadedModel = null; }
+  });
+  pipelinePromise = attempt;
   return pipelinePromise;
 }
 
@@ -52,16 +57,21 @@ async function decodeAudio(file, onProgress) {
 }
 
 // → [{ text, start, end, deleted:false }]
-export async function transcribeFile(file, { model = CONFIG.transcription.defaultModel, onProgress } = {}) {
+// `language` (ISO code like 'hi') hints multilingual models; English-only
+// models ignore it.
+export async function transcribeFile(file, { model = CONFIG.transcription.defaultModel, language = '', onProgress } = {}) {
   const { audio, duration } = await decodeAudio(file, onProgress);
   onProgress?.('Loading speech model…');
   const asr = await getPipeline(model, onProgress);
   onProgress?.('Transcribing…');
-  const out = await asr(audio, {
+  const opts = {
     return_timestamps: 'word',
     chunk_length_s: CONFIG.transcription.chunkLengthS,
     stride_length_s: CONFIG.transcription.strideLengthS,
-  });
+  };
+  const modelId = CONFIG.transcription.models[model] || '';
+  if (language && !modelId.includes('.en')) { opts.language = language; opts.task = 'transcribe'; }
+  const out = await asr(audio, opts);
   const words = (out.chunks || [])
     .map(c => ({
       text: (c.text || '').trim(),

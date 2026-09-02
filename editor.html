@@ -13,171 +13,341 @@
 
 <header class="topbar">
   <a class="logo" href="index.html">✦ Popshot</a>
-  <nav class="steps" id="stepNav">
-    <button data-step="upload"  class="step active">1 · Upload</button>
-    <button data-step="style"   class="step" disabled>2 · Style</button>
-    <button data-step="words"   class="step" disabled>3 · Words</button>
-    <button data-step="package" class="step" disabled>4 · Hook & Thumb</button>
-    <button data-step="export"  class="step" disabled>5 · Export</button>
-  </nav>
-  <div class="topbar-right"><span class="pill pill-green">All features unlocked</span></div>
+  <input class="proj-name" id="projName" value="Untitled" spellcheck="false" aria-label="Project name">
+  <div class="topbar-right">
+    <button class="tb-icon" id="undoBtn" title="Undo (⌘Z)" disabled>↶</button>
+    <button class="tb-icon" id="redoBtn" title="Redo (⇧⌘Z)" disabled>↷</button>
+    <span class="pill pill-soft">All features unlocked</span>
+    <a class="btn btn-plain" href="index.html">← Home</a>
+    <button class="btn btn-primary" id="exportOpenBtn">⬇ Export</button>
+  </div>
 </header>
 
-<main class="workspace">
+<div class="studio">
 
-  <!-- ── Left: preview ─────────────────────────────────────────────── -->
-  <section class="preview-col">
-    <div class="preview-frame" id="previewFrame">
-      <canvas id="previewCanvas" width="540" height="960"></canvas>
-      <div class="preview-empty" id="previewEmpty">
-        <div class="pe-icon">🎬</div>
-        <p>Your clip appears here</p>
+  <!-- ── Tool rail ─────────────────────────────────────────────── -->
+  <nav class="rail" id="rail">
+    <span class="rail-label">TOOLS</span>
+    <button class="rail-btn" data-tool="templates" title="Templates"><i>🎨</i><span>Templates</span></button>
+    <button class="rail-btn" data-tool="customize" title="Customize"><i>🎚</i><span>Customize</span></button>
+    <button class="rail-btn active" data-tool="transcript" title="Transcript"><i>T</i><span>Transcript</span></button>
+    <button class="rail-btn" data-tool="broll" title="B-roll"><i>🎞</i><span>B-roll</span></button>
+    <button class="rail-btn" data-tool="thumbnail" title="Thumbnail"><i>🖼</i><span>Thumbnail</span></button>
+    <button class="rail-btn" data-tool="title" title="Title"><i>✦</i><span>Title</span></button>
+    <button class="rail-btn rail-bottom" data-tool="settings" title="Settings"><i>⚙︎</i><span>Settings</span></button>
+  </nav>
+
+  <!-- ── Tool panel ────────────────────────────────────────────── -->
+  <aside class="tool-panel" id="toolPanel">
+
+    <!-- TRANSCRIPT -->
+    <section class="tp" id="tp-transcript">
+      <div class="tp-tabs">
+        <button class="tp-tab active" data-ttab="subtitles">Subtitles</button>
+        <button class="tp-tab" data-ttab="script">Script</button>
       </div>
-    </div>
-    <div class="transport">
-      <button id="playBtn" class="icon-btn" title="Play / pause">▶</button>
-      <input type="range" id="scrubber" min="0" max="100" value="0" step="0.01">
-      <span class="time" id="timeLabel">0:00 / 0:00</span>
-      <select id="aspectSel" title="Output aspect">
-        <option value="9:16" selected>9:16</option>
-        <option value="1:1">1:1</option>
-        <option value="16:9">16:9</option>
-      </select>
-    </div>
-    <video id="srcVideo" playsinline crossorigin="anonymous" style="display:none"></video>
-  </section>
 
-  <!-- ── Right: step panels ────────────────────────────────────────── -->
-  <section class="panel-col">
+      <div id="ttab-subtitles">
+        <div class="tp-block">
+          <div class="tp-row">
+            <div>
+              <h3>Transcript</h3>
+              <p class="tp-hint">Tap a word to edit it, or turn on select-multiple and tap words to cut a phrase.</p>
+            </div>
+            <label class="tp-check"><input type="checkbox" id="multiSelect"> Select multiple</label>
+          </div>
+          <div class="tp-actions" id="multiActions" hidden>
+            <button class="btn btn-small" id="cutSelBtn">✂ Cut selected</button>
+            <button class="btn btn-small btn-plain" id="clearSelBtn">Clear</button>
+          </div>
+        </div>
 
-    <!-- 1 · UPLOAD -->
-    <div class="panel" id="panel-upload">
-      <h2>Upload your clip</h2>
-      <p class="hint">A talking-head clip works best. MP4, MOV or WebM, ideally under 5 minutes.</p>
-      <div class="dropzone" id="dropzone">
-        <div class="dz-plus">＋</div>
-        <p><strong>Drop video</strong> or click to browse</p>
-        <span class="dz-sub">MP4 · MOV · WebM</span>
-        <input type="file" id="fileInput" accept="video/*" hidden>
+        <div class="tp-block tp-row">
+          <div>
+            <h3>Detect speakers</h3>
+            <p class="tp-hint">Labels alternating speakers from the pauses in the clip.</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="speakersToggle"><span></span></label>
+        </div>
+
+        <div class="tp-block">
+          <div class="tp-row">
+            <h3>Language &amp; writing system</h3>
+            <button class="tp-link" id="langHide">Hide</button>
+          </div>
+          <div id="langBody">
+            <p class="tp-warn">Changing the language re-runs transcription in your browser.</p>
+            <div class="tp-two">
+              <label class="tp-field"><span>WHAT LANGUAGE IS SPOKEN?</span>
+                <select id="langSel">
+                  <option value="">Auto-detect</option>
+                  <option value="en">English</option>
+                  <option value="hi">Hindi</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="ar">Arabic</option>
+                </select>
+                <small>Naming it beats auto-detection</small>
+              </label>
+              <label class="tp-field"><span>WRITING SYSTEM USED?</span>
+                <select id="scriptSel">
+                  <option value="native">As transcribed</option>
+                  <option value="roman">Romanised — kya haal</option>
+                </select>
+                <small>Romanised converts Devanagari to Latin letters</small>
+              </label>
+            </div>
+            <button class="btn btn-small" id="retranscribeBtn">↻ Re-transcribe</button>
+          </div>
+        </div>
+
+        <div class="tp-lines" id="tpLines"></div>
+        <div class="tp-block tp-actions">
+          <button class="btn btn-small" id="fillerBtn">✂ Remove fillers</button>
+          <button class="btn btn-small btn-plain" id="restoreBtn">↺ Restore all</button>
+          <span class="tp-count" id="wordCount"></span>
+        </div>
       </div>
-      <button class="btn btn-ghost" id="demoBtn" style="margin-left:0">▶ Or try the sample clip</button>
 
-      <div class="card" id="transcribeCard" hidden>
-        <h3>Transcription</h3>
-        <label class="field">
-          <span>Model (runs in your browser — nothing is uploaded)</span>
+      <div id="ttab-script" hidden>
+        <div class="tp-block">
+          <h3>Script</h3>
+          <p class="tp-hint">The clip as prose — cut words are struck through. Copy it anywhere.</p>
+          <div class="script-view" id="scriptView"></div>
+          <button class="btn btn-small" id="copyScriptBtn">⧉ Copy script</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEMPLATES -->
+    <section class="tp" id="tp-templates" hidden>
+      <div class="tp-block">
+        <h3>Templates</h3>
+        <p class="tp-hint">Every style sets the fonts, colors, emphasis and motion. The words stay.</p>
+      </div>
+      <div class="cat-tabs" id="catTabs"></div>
+      <p class="cat-desc" id="catDesc"></p>
+      <div class="style-grid" id="styleGrid"></div>
+    </section>
+
+    <!-- CUSTOMIZE -->
+    <section class="tp" id="tp-customize" hidden>
+      <div class="tp-block">
+        <h3>Customize <span class="ft-style" id="ftStyleName"></span></h3>
+        <p class="tp-hint">Fine-tune the selected style — or drag the caption right on the video.</p>
+      </div>
+      <div class="tp-block ft-grid">
+        <label class="tp-field"><span>Text size <b id="ftSizeVal">100%</b></span>
+          <input type="range" id="ftSize" min="60" max="170" value="100" step="5">
+        </label>
+        <label class="tp-field"><span>Vertical position <b id="ftPosVal">auto</b></span>
+          <input type="range" id="ftPos" min="15" max="90" value="74" step="1">
+        </label>
+        <label class="tp-field"><span>Words per caption <b id="ftWordsVal">auto</b></span>
+          <input type="range" id="ftWords" min="1" max="8" value="4" step="1">
+        </label>
+        <label class="tp-field"><span>Letter case</span>
+          <select id="ftCase">
+            <option value="">Style default</option>
+            <option value="upper">UPPERCASE</option>
+            <option value="lower">lowercase</option>
+            <option value="none">As spoken</option>
+          </select>
+        </label>
+        <label class="tp-field color-field"><span>Text color</span>
+          <input type="color" id="ftText" value="#ffffff">
+        </label>
+        <label class="tp-field color-field"><span>Highlight color</span>
+          <input type="color" id="ftActive" value="#ffe600">
+        </label>
+      </div>
+      <div class="tp-block">
+        <button class="btn btn-small btn-plain" id="ftReset">↺ Reset to style defaults</button>
+      </div>
+      <div class="tp-block" id="speakerCard" hidden>
+        <h3>Speaker label</h3>
+        <div class="tp-two">
+          <label class="tp-field"><span>Name</span><input type="text" id="spkName" placeholder="Neha Sharma"></label>
+          <label class="tp-field"><span>Role</span><input type="text" id="spkRole" placeholder="Founder"></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- B-ROLL -->
+    <section class="tp" id="tp-broll" hidden>
+      <div class="tp-block">
+        <h3>B-roll</h3>
+        <p class="tp-hint">Cutaway images or clips that cover the video while your captions keep going. Paste or drop anywhere, or add at the playhead below. Drag blocks on the timeline to move and trim.</p>
+        <button class="btn btn-small" id="brollAddBtn">＋ Add at playhead</button>
+        <input type="file" id="brollFile" accept="image/*,video/*" hidden>
+      </div>
+      <div class="tp-block">
+        <div class="broll-list" id="brollList"><p class="tp-hint">No b-roll yet.</p></div>
+      </div>
+    </section>
+
+    <!-- THUMBNAIL -->
+    <section class="tp" id="tp-thumbnail" hidden>
+      <div class="tp-block">
+        <h3>Thumbnail</h3>
+        <p class="tp-hint">Four cover concepts from the same clip.</p>
+        <label class="tp-field"><span>Frame</span>
+          <input type="range" id="thumbScrub" min="0" max="100" value="12" step="0.1">
+        </label>
+      </div>
+      <div class="concept-grid" id="conceptGrid">
+        <button class="concept" data-style="clean"><canvas width="180" height="320"></canvas><span>Clean frame</span></button>
+        <button class="concept selected" data-style="bold"><canvas width="180" height="320"></canvas><span>Bold text</span></button>
+        <button class="concept" data-style="tape"><canvas width="180" height="320"></canvas><span>Tape highlight</span></button>
+        <button class="concept" data-style="scene"><canvas width="180" height="320"></canvas><span>Stylized scene</span></button>
+      </div>
+      <div class="tp-block">
+        <label class="tp-field"><span>Thumbnail text</span>
+          <input type="text" id="thumbText" placeholder="Uses your hook by default">
+        </label>
+        <button class="btn btn-small" id="thumbDownload">⬇ Download selected (PNG)</button>
+      </div>
+    </section>
+
+    <!-- TITLE -->
+    <section class="tp" id="tp-title" hidden>
+      <div class="tp-block">
+        <h3>Title / Hook</h3>
+        <p class="tp-hint">Your strongest opening lines, scored from the transcript.</p>
+      </div>
+      <div class="tp-block">
+        <div class="hook-list" id="hookList"></div>
+        <label class="tp-field"><span>Or write your own</span>
+          <input type="text" id="hookCustom" placeholder="Type a custom hook line…">
+        </label>
+        <label class="tp-check" style="margin-top:8px"><input type="checkbox" id="hookBurn"> Burn the hook into the video as an opening title (first 2.5 s)</label>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="tp" id="tp-settings" hidden>
+      <div class="tp-block">
+        <h3>Settings</h3>
+        <label class="tp-field"><span>Transcription model</span>
           <select id="modelSel">
             <option value="fast" selected>Fast · English (tiny)</option>
             <option value="balanced">Balanced · Multilingual incl. Hinglish (base)</option>
           </select>
+          <small>Runs in your browser — nothing is uploaded.</small>
         </label>
-        <button class="btn btn-primary" id="transcribeBtn">Transcribe clip →</button>
-        <button class="btn btn-ghost" id="manualBtn">Or paste transcript manually</button>
-        <div class="progress" id="transcribeProgress" hidden><div class="progress-msg" id="progressMsg"></div><div class="bar"><div class="bar-fill indeterminate"></div></div></div>
-        <div class="manual-box" id="manualBox" hidden>
-          <textarea id="manualText" rows="5" placeholder="Paste what you say in the clip…"></textarea>
-          <button class="btn btn-primary" id="manualGo">Use this transcript →</button>
+      </div>
+      <div class="tp-block">
+        <h3>Clip</h3>
+        <p class="tp-hint" id="clipInfo">No clip loaded.</p>
+        <button class="btn btn-small btn-plain" id="replaceClipBtn">Replace clip…</button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ── Stage ─────────────────────────────────────────────────── -->
+  <main class="stage">
+    <div class="stage-inner">
+      <div class="canvas-wrap" id="canvasWrap">
+        <div class="canvas-pills">
+          <button class="cpill" id="safeBtn">Safe zone</button>
+          <button class="cpill cpill-hero" id="cutoutBtn">✨ Get sharper cutouts</button>
+          <div class="cpill-select">
+            <select id="aspectSel" aria-label="Aspect ratio">
+              <option value="9:16" selected>9:16</option>
+              <option value="1:1">1:1</option>
+              <option value="16:9">16:9</option>
+            </select>
+          </div>
         </div>
-      </div>
-    </div>
+        <canvas id="previewCanvas" width="540" height="960"></canvas>
 
-    <!-- 2 · STYLE -->
-    <div class="panel" id="panel-style" hidden>
-      <h2>Pick a caption style</h2>
-      <p class="hint">Every style sets the font, color, emphasis and motion. Change it any time — the words stay.</p>
-      <div class="cat-tabs" id="catTabs"></div>
-      <p class="cat-desc" id="catDesc"></p>
-      <div class="style-grid" id="styleGrid"></div>
-      <div class="panel-actions"><button class="btn btn-primary" id="toWordsBtn">Continue to words →</button></div>
-    </div>
-
-    <!-- 3 · WORDS -->
-    <div class="panel" id="panel-words" hidden>
-      <h2>Edit words, not a timeline</h2>
-      <p class="hint">Click a word to fix it. Click <b>✕</b> on a word to cut it. Captions resync instantly.</p>
-      <div class="word-tools">
-        <button class="btn btn-ghost" id="fillerBtn">✂ Remove filler words</button>
-        <button class="btn btn-ghost" id="restoreBtn">↺ Restore all</button>
-        <span class="word-count" id="wordCount"></span>
-      </div>
-      <div class="word-editor" id="wordEditor"></div>
-      <div class="panel-actions"><button class="btn btn-primary" id="toPackageBtn">Continue to hook & thumbnail →</button></div>
-    </div>
-
-    <!-- 4 · PACKAGE -->
-    <div class="panel" id="panel-package" hidden>
-      <h2>Hook & thumbnail</h2>
-      <p class="hint">Your opening line, pulled from your own words — plus a cover image from the same clip.</p>
-
-      <div class="card">
-        <h3>01 / Hook</h3>
-        <div class="hook-list" id="hookList"></div>
-        <label class="field"><span>Or write your own</span>
-          <input type="text" id="hookCustom" placeholder="Type a custom hook line…">
-        </label>
-      </div>
-
-      <div class="card">
-        <h3>02 / Thumbnail</h3>
-        <div class="thumb-row">
-          <div class="thumb-preview"><canvas id="thumbCanvas" width="270" height="480"></canvas></div>
-          <div class="thumb-controls">
-            <label class="field"><span>Frame</span>
-              <input type="range" id="thumbScrub" min="0" max="100" value="12" step="0.1">
-            </label>
-            <label class="field"><span>Treatment</span>
-              <select id="thumbStyle">
-                <option value="clean">Clean frame</option>
-                <option value="bold" selected>Bold text</option>
-                <option value="tape">Tape highlight</option>
-                <option value="editorial">Editorial serif</option>
-                <option value="scene">Stylized scene</option>
-              </select>
-            </label>
-            <label class="field"><span>Thumbnail text</span>
-              <input type="text" id="thumbText" placeholder="Uses your hook by default">
-            </label>
-            <button class="btn btn-ghost" id="thumbDownload">⬇ Download PNG</button>
+        <!-- empty state / upload overlay -->
+        <div class="stage-empty" id="stageEmpty">
+          <div class="se-card">
+            <h2>Add your clip</h2>
+            <div class="se-drop" id="dropzone">
+              <div class="se-plus">＋</div>
+              <p><strong>Drop video</strong> or click to browse</p>
+              <span>MP4 · MOV · WebM</span>
+              <input type="file" id="fileInput" accept="video/*" hidden>
+            </div>
+            <div class="se-samples" id="sampleRow">
+              <button class="btn btn-small btn-plain" data-sample="assets/demo.mp4">▶ Sample clip</button>
+            </div>
+            <div id="transcribeCard" hidden>
+              <button class="btn btn-primary" id="transcribeBtn" style="width:100%">Transcribe clip →</button>
+              <button class="tp-link" id="manualBtn" style="margin-top:8px">Or paste the transcript manually</button>
+              <div class="progress" id="transcribeProgress" hidden>
+                <div class="progress-msg" id="progressMsg"></div>
+                <div class="bar"><div class="bar-fill indeterminate"></div></div>
+              </div>
+              <div id="manualBox" hidden>
+                <textarea id="manualText" rows="4" placeholder="Paste what you say in the clip…"></textarea>
+                <button class="btn btn-primary" id="manualGo" style="width:100%">Use this transcript →</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="card" id="speakerCard" hidden>
-        <h3>Speaker label</h3>
-        <div class="two-col">
-          <label class="field"><span>Name</span><input type="text" id="spkName" placeholder="Neha Sharma"></label>
-          <label class="field"><span>Role</span><input type="text" id="spkRole" placeholder="Founder"></label>
-        </div>
+      <div class="transport">
+        <button id="playBtn" class="t-play" title="Play / pause (Space)">▶</button>
+        <button id="muteBtn" class="t-icon" title="Mute">🔊</button>
+        <span class="t-time" id="timeCur">0:00</span>
+        <input type="range" id="scrubber" min="0" max="100" value="0" step="0.01">
+        <span class="t-time" id="timeDur">0:00</span>
       </div>
-
-      <div class="panel-actions"><button class="btn btn-primary" id="toExportBtn">Continue to export →</button></div>
     </div>
+  </main>
+</div>
 
-    <!-- 5 · EXPORT -->
-    <div class="panel" id="panel-export" hidden>
+<!-- ── Timeline ─────────────────────────────────────────────── -->
+<footer class="timeline-bar" id="timelineBar">
+  <div class="tl-head">
+    <span class="tl-time" id="tlTime">0:00 / 0:00</span>
+    <div class="tl-modes">
+      <button class="tl-mode" data-mode="lines">Lines</button>
+      <button class="tl-mode active" data-mode="words">Words</button>
+    </div>
+    <span class="tl-sel" id="tlSel"></span>
+    <div class="tl-zoom">
+      <button class="tl-btn" id="tlZoomOut" title="Zoom out">−</button>
+      <span class="tl-zoom-val" id="tlZoomVal">100%</span>
+      <button class="tl-btn" id="tlZoomIn" title="Zoom in">＋</button>
+      <button class="tl-btn tl-fit" id="tlFit">Fit</button>
+    </div>
+  </div>
+  <div class="tl-canvas-wrap"><canvas id="timelineCanvas"></canvas></div>
+</footer>
+
+<!-- ── Export modal ─────────────────────────────────────────── -->
+<div class="modal-back" id="exportModal" hidden>
+  <div class="modal">
+    <div class="modal-head">
       <h2>Export your short</h2>
-      <p class="hint">The export renders the exact composition you see in the preview — captions, style and all.</p>
-      <div class="card">
-        <div class="export-meta" id="exportMeta"></div>
-        <button class="btn btn-primary btn-big" id="exportBtn">⬇ Render & download</button>
-        <button class="btn btn-ghost" id="cancelExportBtn" hidden>Cancel</button>
-        <div class="progress" id="exportProgress" hidden>
-          <div class="progress-msg" id="exportMsg">Rendering…</div>
-          <div class="bar"><div class="bar-fill" id="exportBar" style="width:0%"></div></div>
-        </div>
-        <p class="hint" id="exportNote"></p>
-      </div>
-      <div class="card export-done" id="exportDone" hidden>
-        <h3>✅ Ready to post</h3>
-        <p id="exportDoneMsg"></p>
-        <a class="btn btn-primary" id="downloadLink" download>Save video</a>
-      </div>
+      <button class="tb-icon" id="exportCloseBtn">✕</button>
     </div>
-
-  </section>
-</main>
+    <p class="tp-hint">The export renders the exact composition in the preview — captions, b-roll, hook and all.</p>
+    <div class="export-meta" id="exportMeta"></div>
+    <button class="btn btn-primary btn-big" id="exportBtn">⬇ Render &amp; download</button>
+    <button class="btn btn-plain" id="cancelExportBtn" hidden>Cancel</button>
+    <div class="progress" id="exportProgress" hidden>
+      <div class="progress-msg" id="exportMsg">Rendering…</div>
+      <div class="bar"><div class="bar-fill" id="exportBar" style="width:0%"></div></div>
+    </div>
+    <p class="tp-hint" id="exportNote"></p>
+    <div class="export-done" id="exportDone" hidden>
+      <h3>✅ Ready to post</h3>
+      <p id="exportDoneMsg"></p>
+      <a class="btn btn-primary" id="downloadLink" download>Save video</a>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast" hidden></div>
+<video id="srcVideo" playsinline crossorigin="anonymous" style="display:none"></video>
 
 <script type="module" src="js/editor.js"></script>
 </body>

@@ -17,6 +17,7 @@
   <nav class="nav-links">
     <a href="#styles">Styles</a>
     <a href="#how">How it works</a>
+    <a href="tools.html">Tools</a>
     <a href="#pricing">Pricing</a>
     <a href="#faq">FAQ</a>
   </nav>
@@ -27,14 +28,21 @@
 <section class="hero">
   <div class="marquee" aria-hidden="true"><div class="marquee-track" id="mq1"></div></div>
 
-  <h1>make every word <span class="pop-word">pop.</span></h1>
+  <h1>make every word <span class="pop-word"><span id="typeword">pop.</span><span class="caret"></span></span></h1>
   <p class="sub">Upload a talking-head clip, pick a designed caption style, fix the words instead of a timeline, and walk away with a short that's ready to post. All in your browser.</p>
 
-  <div class="hero-drop" id="heroDrop">
-    <div class="hd-plus">＋</div>
-    <p><strong>Drop video</strong> or click to upload</p>
-    <span class="hd-sub">MP4 · MOV · WebM</span>
-    <input type="file" id="heroFile" accept="video/*" hidden>
+  <div class="hero-card">
+    <div class="hero-drop" id="heroDrop">
+      <div class="hd-plus">＋</div>
+      <p id="heroDropLabel"><strong>Drop video</strong> or click to upload</p>
+      <span class="hd-sub">MP4 · MOV · WebM</span>
+      <input type="file" id="heroFile" accept="video/*" hidden>
+    </div>
+    <div class="hero-actions">
+      <a class="btn btn-secondary" href="#styles" id="pickStyleBtn">＋ Pick a style</a>
+      <button class="btn btn-primary" id="createBtn">Create my video →</button>
+    </div>
+    <div class="hero-validate" id="heroValidate"></div>
   </div>
   <p class="tiny">Everything runs locally in your browser — your clip never leaves your machine.</p>
 
@@ -105,7 +113,7 @@
       <div class="kicker">03 / PACKAGE</div>
       <h3>Covers built from your own frames.</h3>
       <p>Scrub to the best frame and apply a treatment — bold text, tape highlight, editorial serif or a stylized scene. The post ships finished, not just captioned.</p>
-      <ul><li>Any frame from your clip</li><li>Five text treatments</li><li>1080×1920 PNG download</li></ul>
+      <ul><li>Any frame from your clip</li><li>Four cover concepts</li><li>1080×1920 PNG download</li></ul>
     </div>
     <div class="feature-demo demo-thumbs">
       <div class="dt"><b>BOLD</b><span>High-contrast title</span></div>

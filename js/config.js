@@ -22,7 +22,8 @@ export const CONFIG = {
   },
 
   // Words treated as fillers by the one-click "Remove fillers" action
-  fillerWords: ['um', 'uh', 'uhm', 'erm', 'hmm', 'like', 'you know', 'basically', 'actually', 'literally'],
+  // (single words only — the matcher compares one word at a time)
+  fillerWords: ['um', 'uh', 'uhm', 'erm', 'hmm', 'like', 'basically', 'actually', 'literally'],
 
   // Caption grouping defaults (presets can override)
   captions: {

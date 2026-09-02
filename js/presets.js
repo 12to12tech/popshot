@@ -31,8 +31,10 @@ export const CATEGORIES = [
   { id: 'social',    name: 'Social',        ai: false, desc: 'Clean, punchy styles for every feed.' },
   { id: 'neon',      name: 'Neon & FX',     ai: false, desc: 'Glass, glow, pixel and glitch finishes.' },
   { id: 'retro',     name: 'Retro',         ai: false, desc: 'Yellow, black, italic. Throwback energy.' },
+  { id: 'creators',  name: 'Creators',      ai: false, desc: 'The signature looks people ask for by name.' },
   { id: 'desi',      name: 'Desi',          ai: false, desc: 'Hinglish and Devanagari — one face for both scripts.' },
   { id: 'speakers',  name: 'Speakers',      ai: false, desc: 'Lower-thirds, podcast labels and quote cards for talking heads.' },
+  { id: 'ai-edits',  name: 'AI Edits',      ai: true,  desc: 'Turnkey treatments — the strongest word in every line gets promoted automatically.' },
 ];
 
 const D = (o) => Object.assign({
@@ -210,7 +212,7 @@ export const PRESETS = [
   // ── SOCIAL ───────────────────────────────────────────────────────────────
   D({
     id: 'tiktok-classic', name: 'Feed Classic', category: 'social',
-    font: { family: 'Proxima Nova, Montserrat', weight: 700, size: 0.062 },
+    font: { family: '"Proxima Nova", Montserrat', weight: 700, size: 0.062 },
     colors: { text: '#ffffff', active: '#ffffff', stroke: '#000000', strokeWidth: 0.010 },
     emphasis: 'none', anim: { in: 'none', perWord: false },
   }),
@@ -285,6 +287,63 @@ export const PRESETS = [
     emphasis: 'color', anim: { in: 'squash', perWord: true }, extra: { rotateJitter: 0.03 },
   }),
 
+  // ── CREATORS ─────────────────────────────────────────────────────────────
+  D({
+    id: 'spaced-read', name: 'Read This Now', category: 'creators', badge: 'NEW', tier: 'creator',
+    font: { family: 'Bebas Neue', weight: 400, size: 0.09, transform: 'upper', letterSpacing: 0.22 },
+    grouping: { mode: 'word', maxWords: 1 },
+    colors: { text: '#ffffff', active: '#ffffff', shadow: 'rgba(0,0,0,.6)' },
+    emphasis: 'none', anim: { in: 'type', perWord: true }, pos: { y: 0.5, align: 'center' },
+  }),
+  D({
+    id: 'chapter-two', name: 'Chapter Two', category: 'creators', badge: 'TRENDING', tier: 'creator',
+    font: { family: 'Libre Caslon Text', weight: 700, size: 0.052, transform: 'upper', letterSpacing: 0.16 },
+    accentFont: { family: 'Playfair Display', weight: 600, size: 0.12, style: 'italic' },
+    grouping: { mode: 'lockup', maxWords: 4 },
+    colors: { text: 'rgba(255,255,255,.85)', active: '#ffffff', accent: '#ffffff', shadow: 'rgba(0,0,0,.55)' },
+    emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.5, align: 'center' },
+  }),
+  D({
+    id: 'software-pick', name: 'Pick Your Tool', category: 'creators', badge: 'NEW', tier: 'creator',
+    font: { family: 'JetBrains Mono, "Space Mono"', weight: 700, size: 0.05 },
+    colors: { text: '#e2e8f0', active: '#0b0b0f', wordBg: '#4ade80', bgRadius: 0.008, bg: 'rgba(2,6,23,.7)' },
+    emphasis: 'box', anim: { in: 'type', perWord: true }, pos: { y: 0.78, align: 'center' },
+  }),
+  D({
+    id: 'quiet-confidence', name: 'Quiet Confidence', category: 'creators', tier: 'creator',
+    font: { family: 'Inter', weight: 300, size: 0.055, transform: 'lower', letterSpacing: 0.06 },
+    accentFont: { family: 'Inter', weight: 800, size: 0.055 },
+    grouping: { mode: 'lockup', maxWords: 5 },
+    colors: { text: 'rgba(255,255,255,.9)', active: '#ffffff', accent: '#ffffff', shadow: 'rgba(0,0,0,.5)' },
+    emphasis: 'none', anim: { in: 'rise', perWord: false }, pos: { y: 0.72, align: 'center' },
+  }),
+
+  // ── AI EDITS (turnkey auto-emphasis) ─────────────────────────────────────
+  D({
+    id: 'ai-punch', name: 'Auto Punch', category: 'ai-edits', badge: 'TRENDING', tier: 'pro',
+    font: { family: 'Montserrat', weight: 700, size: 0.06 },
+    accentFont: { family: 'Anton', weight: 400, size: 0.095, transform: 'upper' },
+    colors: { text: 'rgba(255,255,255,.92)', active: '#ffffff', accent: '#ffe600', stroke: '#000000', strokeWidth: 0.008, shadow: 'rgba(0,0,0,.5)' },
+    emphasis: 'color', anim: { in: 'pop', perWord: true },
+    extra: { autoKey: true },
+  }),
+  D({
+    id: 'ai-essay', name: 'Auto Essay', category: 'ai-edits', badge: 'NEW', tier: 'pro',
+    font: { family: 'Inter', weight: 400, size: 0.052 },
+    accentFont: { family: 'Playfair Display', weight: 600, size: 0.075, style: 'italic' },
+    colors: { text: 'rgba(255,255,255,.88)', active: '#ffffff', accent: '#7dd3fc', shadow: 'rgba(0,0,0,.55)', dim: 'rgba(0,0,0,.18)' },
+    emphasis: 'color', anim: { in: 'fade', perWord: false },
+    extra: { autoKey: true },
+  }),
+  D({
+    id: 'ai-hype', name: 'Auto Hype', category: 'ai-edits', badge: 'NEW', tier: 'pro',
+    font: { family: 'Poppins', weight: 800, size: 0.058, transform: 'upper' },
+    accentFont: { family: 'Titan One', weight: 400, size: 0.09 },
+    colors: { text: '#ffffff', active: '#ffffff', accent: '#4ade80', stroke: '#0f172a', strokeWidth: 0.01, shadow: 'rgba(15,23,42,.5)' },
+    emphasis: 'scale', anim: { in: 'squash', perWord: true },
+    extra: { autoKey: true },
+  }),
+
   // ── DESI ─────────────────────────────────────────────────────────────────
   D({
     id: 'hinglish-bold', name: 'Hinglish Bold', category: 'desi', badge: 'TRENDING',
@@ -340,7 +399,7 @@ export function getPreset(id) {
 // Google Fonts needed by the presets (loaded in <head> of both pages)
 export const FONT_FAMILIES = [
   'Archivo Black', 'Montserrat:wght@700;800;900', 'Inter:wght@300;400;700;800',
-  'Anton', 'Playfair Display:ital,wght@0,500;0,600;1,500', 'Lilita One',
+  'Anton', 'Playfair Display:ital,wght@0,500;0,600;1,500;1,600', 'Lilita One',
   'Permanent Marker', 'Poppins:wght@600;800', 'Bangers', 'Abril Fatface',
   'Bebas Neue', 'Titan One', 'Space Mono:wght@700', 'Oswald:ital,wght@0,600;0,700;1,700',
   'Cormorant Garamond:ital,wght@0,600;1,600', 'Libre Caslon Text:wght@700',

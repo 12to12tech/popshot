@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // Popshot — landing page script
-// Renders the style gallery with the real caption engine, runs the marquees,
-// and hands a dropped file to the editor via IndexedDB.
+// Typewriter hero, live style gallery rendered by the real caption engine
+// (cards animate on hover), upload + style validation, and file/style handoff
+// to the editor via IndexedDB + sessionStorage.
 // ---------------------------------------------------------------------------
 
 import { CATEGORIES, presetsForCategory, FONT_FAMILIES } from './presets.js';
@@ -11,6 +12,21 @@ import { stashFile } from './handoff.js';
 // fonts
 document.getElementById('gfonts').href = 'https://fonts.googleapis.com/css2?' +
   FONT_FAMILIES.map(f => 'family=' + f.replace(/ /g, '+')).join('&') + '&display=swap';
+
+// ── Typewriter hero ────────────────────────────────────────────────────────
+const TYPE_WORDS = ['pop.', 'animated.', 'readable.', 'designed.', 'post-ready.'];
+(() => {
+  const el = document.getElementById('typeword');
+  if (!el) return;
+  let wi = 0, ci = TYPE_WORDS[0].length, dir = -1, wait = 18;
+  setInterval(() => {
+    if (wait > 0) { wait--; return; }
+    ci += dir;
+    if (ci < 0) { dir = 1; ci = 0; wi = (wi + 1) % TYPE_WORDS.length; }
+    el.textContent = TYPE_WORDS[wi].slice(0, ci) || ' ';
+    if (ci >= TYPE_WORDS[wi].length) { dir = -1; wait = 22; } // hold the full word
+  }, 90);
+})();
 
 // ── Marquees ───────────────────────────────────────────────────────────────
 const strips = {
@@ -23,22 +39,41 @@ for (const [id, text] of Object.entries(strips)) {
   if (el) el.textContent = text.repeat(12);
 }
 
-// ── Hero dropzone → editor handoff ─────────────────────────────────────────
+// ── Hero upload + validation ───────────────────────────────────────────────
 const drop = document.getElementById('heroDrop');
 const fileInput = document.getElementById('heroFile');
+let pendingFile = null;
+let chosenStyle = null;
+
 drop.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', (e) => e.target.files[0] && handoff(e.target.files[0]));
+fileInput.addEventListener('change', (e) => e.target.files[0] && setFile(e.target.files[0]));
 drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('drag'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
 drop.addEventListener('drop', (e) => {
   e.preventDefault(); drop.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (f && f.type.startsWith('video/')) handoff(f);
+  if (f && f.type.startsWith('video/')) setFile(f);
 });
-async function handoff(file) {
-  try { await stashFile(file); } catch { /* editor will just show its own dropzone */ }
-  location.href = 'editor.html';
+
+function setFile(f) {
+  pendingFile = f;
+  drop.classList.add('has-file');
+  document.getElementById('heroDropLabel').innerHTML =
+    `<strong>${f.name}</strong> · ${(f.size / 1e6).toFixed(1)} MB ✓`;
+  validate('');
 }
+
+function validate(msg) {
+  document.getElementById('heroValidate').textContent = msg;
+}
+
+document.getElementById('createBtn').addEventListener('click', async () => {
+  if (!pendingFile && !chosenStyle) return validate('Add a clip and pick a style below to continue — or just open the editor from “Create”.');
+  if (!pendingFile) return validate('Add a clip to continue.');
+  try { await stashFile(pendingFile); } catch { /* editor shows its own dropzone */ }
+  if (chosenStyle) { try { sessionStorage.setItem('popshot-style', chosenStyle); } catch { /* private mode */ } }
+  location.href = 'editor.html';
+});
 
 // ── Style gallery ──────────────────────────────────────────────────────────
 let activeCat = 'popular';
@@ -51,6 +86,7 @@ const SAMPLE_WORDS = [
   { text: 'it', start: 0.4, end: 0.7, deleted: false },
   { text: 'POP', start: 0.7, end: 1.3, deleted: false },
 ];
+const SAMPLE_LOOP = 1.8; // seconds per hover-animation loop
 
 const sampleSource = (() => {
   const c = document.createElement('canvas');
@@ -87,16 +123,25 @@ tabsEl.addEventListener('click', (e) => {
   renderGallery();
 });
 
+function drawCard(cv, p, t, mask, scratch) {
+  drawFrame(cv.getContext('2d'), sampleSource, t, groupWords(SAMPLE_WORDS, p), p,
+    { mask, scratch, speaker: { name: 'Neha Sharma', role: 'Founder' } });
+}
+
+let renderSeq = 0;
 async function renderGallery() {
+  const token = ++renderSeq;   // overlapping calls: last one wins, no duplicate cards
   renderTabs();
   const cat = CATEGORIES.find(c => c.id === activeCat);
   descEl.textContent = cat?.desc || '';
   gridEl.innerHTML = '';
   await document.fonts.ready;
+  if (token !== renderSeq) return;
   for (const p of presetsForCategory(activeCat)) {
     const card = document.createElement('a');
     card.className = 'style-card';
     card.href = 'editor.html';
+    card.dataset.id = p.id;
     if (p.badge) card.innerHTML += `<span class="badge ${p.badge === 'TRENDING' ? 'trending' : ''}">${p.badge}</span>`;
     const cv = document.createElement('canvas');
     cv.width = 270; cv.height = 480;
@@ -110,8 +155,35 @@ async function renderGallery() {
     const scratch = document.createElement('canvas');
     scratch.width = 270; scratch.height = 480;
     const mask = p.behind ? sampleMask() : null;
-    drawFrame(cv.getContext('2d'), sampleSource, 0.95, groupWords(SAMPLE_WORDS, p), p,
-      { mask, scratch, speaker: { name: 'Neha Sharma', role: 'Founder' } });
+    drawCard(cv, p, 0.95, mask, scratch);
+
+    // hover → replay the sample animation on this card only
+    // (the loop kills itself if the card is detached by a gallery re-render)
+    let raf = 0;
+    card.addEventListener('mouseenter', () => {
+      const start = performance.now();
+      const loop = (now) => {
+        if (!cv.isConnected) return;
+        drawCard(cv, p, ((now - start) / 1000) % SAMPLE_LOOP, mask, scratch);
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    });
+    card.addEventListener('mouseleave', () => {
+      cancelAnimationFrame(raf);
+      if (cv.isConnected) drawCard(cv, p, 0.95, mask, scratch);
+    });
+
+    // choosing a card remembers the style — and carries a staged hero clip along
+    card.addEventListener('click', async (e) => {
+      chosenStyle = p.id;
+      try { sessionStorage.setItem('popshot-style', p.id); } catch { /* private mode */ }
+      if (pendingFile) {
+        e.preventDefault();
+        try { await stashFile(pendingFile); } catch { /* editor shows its own dropzone */ }
+        location.href = 'editor.html';
+      }
+    });
   }
 }
 

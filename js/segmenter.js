@@ -31,6 +31,12 @@ export class MaskTracker {
     this.ready = false;
     this.failed = false;
     this._lastTs = -1;
+    // Segmentation is by far the most expensive per-frame step; running it at
+    // ~15 Hz and reusing the last mask in between keeps the preview at 60 fps
+    // with no visible difference in the composite.
+    this.minIntervalMs = 66;
+    this._lastRun = -Infinity;
+    this._hasMask = false;
   }
 
   async init() {
@@ -47,6 +53,9 @@ export class MaskTracker {
   // returns the mask canvas (person = opaque white) or null
   update(video, tMs) {
     if (!this.ready) return null;
+    // throttle: reuse the previous mask between runs
+    if (tMs - this._lastRun < this.minIntervalMs) return this._hasMask ? this.canvas : null;
+    this._lastRun = tMs;
     if (tMs <= this._lastTs) tMs = this._lastTs + 1; // MediaPipe needs monotonic timestamps
     this._lastTs = tMs;
     const w = video.videoWidth, h = video.videoHeight;
@@ -67,6 +76,7 @@ export class MaskTracker {
         }
         this.ctx.putImageData(img, 0, 0);
         out = this.canvas;
+        this._hasMask = true;
         mask.close();
       }
       res.close?.();

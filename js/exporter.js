@@ -19,9 +19,16 @@ export function pickMimeType() {
 // initialize at the target resolution. Probe each candidate with a short real
 // recording at the output size and cache the first one that produces data.
 const probeCache = new Map();
-export async function findWorkingMime(w, h) {
+const probeInFlight = new Map();
+export function findWorkingMime(w, h) {
   const key = `${w}x${h}`;
-  if (probeCache.has(key)) return probeCache.get(key);
+  if (probeCache.has(key)) return Promise.resolve(probeCache.get(key));
+  if (probeInFlight.has(key)) return probeInFlight.get(key);
+  const p = probeMimes(w, h, key).finally(() => probeInFlight.delete(key));
+  probeInFlight.set(key, p);
+  return p;
+}
+async function probeMimes(w, h, key) {
   for (const mime of CONFIG.export.mimeCandidates) {
     if (!window.MediaRecorder || !MediaRecorder.isTypeSupported(mime)) continue;
     const ok = await new Promise((resolve) => {
@@ -52,10 +59,12 @@ export async function findWorkingMime(w, h) {
   return '';
 }
 
-// opts: { video, groups, preset, aspect, maskTracker, speaker, onProgress, signal }
+// opts: { video, groups, preset, aspect, maskTracker, speaker, layoutVersion,
+//         hookTitle, broll, prepFrame(t), onProgress, signal }
 // resolves { blob, ext, mime }
 export async function exportVideo(opts) {
-  const { video, groups, preset, aspect = CONFIG.export.defaultAspect, maskTracker, speaker, onProgress, signal } = opts;
+  const { video, groups, preset, aspect = CONFIG.export.defaultAspect, maskTracker,
+          speaker, layoutVersion, hookTitle, broll, prepFrame, onProgress, signal } = opts;
   const size = CONFIG.export.sizes[aspect] || CONFIG.export.sizes['9:16'];
 
   const canvas = document.createElement('canvas');
@@ -100,20 +109,30 @@ export async function exportVideo(opts) {
   });
   rec.start(250);
 
+  // Driven by setInterval, not requestAnimationFrame — rAF pauses in hidden
+  // or occluded windows, which would stall the export at 0% forever.
   const duration = video.duration;
-  let raf;
+  let timer = null, busy = false, finished = false;
   const tick = () => {
-    if (signal?.aborted) { finish(); return; }
-    const t = video.currentTime;
-    let mask = null;
-    if (preset.behind && maskTracker?.ready) mask = maskTracker.update(video, performance.now());
-    drawFrame(ctx, video, t, groups, preset, { mask, scratch, speaker });
-    onProgress?.(Math.min(1, t / duration));
-    if (video.ended || t >= duration - 0.03) { finish(); return; }
-    raf = requestAnimationFrame(tick);
+    if (busy || finished) return;
+    busy = true;
+    try {
+      if (signal?.aborted) { finish(); return; }
+      const t = video.currentTime;
+      let mask = null;
+      if (preset.behind && maskTracker?.ready) mask = maskTracker.update(video, performance.now());
+      prepFrame?.(t);
+      drawFrame(ctx, video, t, groups, preset, { mask, scratch, speaker, layoutVersion, hookTitle, broll });
+      onProgress?.(Math.min(1, t / duration));
+      if (video.ended || t >= duration - 0.03) finish();
+    } finally {
+      busy = false;
+    }
   };
   const finish = () => {
-    cancelAnimationFrame(raf);
+    if (finished) return;
+    finished = true;
+    clearInterval(timer);
     if (rec.state !== 'inactive') rec.stop();
     video.pause();
     video.muted = wasMuted;
@@ -122,6 +141,7 @@ export async function exportVideo(opts) {
   };
   const onEnded = () => finish();
   video.addEventListener('ended', onEnded, { once: true });
+  timer = setInterval(tick, Math.max(10, Math.floor(1000 / CONFIG.export.fps)));
   tick();
 
   const blob = await done;
