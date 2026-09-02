@@ -147,6 +147,7 @@ function layoutGroup(ctx, group, preset, W, H) {
     // measure (word gaps use the line's own font so measure and placement agree)
     const laid = [];
     let totalH = 0;
+    let lIdx = 0;
     for (const line of lines.slice(0, 4)) {
       const lf = line.hero && preset.accentFont ? preset.accentFont : f;
       ctx.font = fontString(lf, W);
@@ -157,7 +158,7 @@ function layoutGroup(ctx, group, preset, W, H) {
         const txt = wordText(w, lf, preset);
         const wd = ctx.measureText(txt).width + (lf.letterSpacing ? txt.length * lf.letterSpacing * (lf.size * W) : 0);
         lw += wd + sw;
-        return { w, txt, wd, hero: line.hero };
+        return { w, txt, wd, hero: line.hero, idx: lIdx++ };
       });
       lw -= sw;
       laid.push({ items, lw, lh, sw, hero: line.hero, font: lf });
@@ -214,6 +215,7 @@ function layoutGroup(ctx, group, preset, W, H) {
   ctx.font = fontString(f, W);
   const lh = (f.size || 0.06) * W * (f.lineHeight || 1.15);
   const lines = [{ items: [], lw: 0 }];
+  let gIdx = 0;
   for (const w of group.words) {
     const wf = w === keyWord && preset.accentFont ? preset.accentFont : f;
     ctx.font = fontString(wf, W);
@@ -227,7 +229,7 @@ function layoutGroup(ctx, group, preset, W, H) {
       lines.push(line);
     }
     line.lw += (line.items.length ? line.items[line.items.length - 1].sw : 0) + wd;
-    line.items.push({ w, txt, wd, sw, hero: w === keyWord });
+    line.items.push({ w, txt, wd, sw, hero: w === keyWord, idx: gIdx++ });
   }
   const totalH = lines.length * lh;
   const cx = W * (preset.pos.x ?? 0.5);
@@ -313,6 +315,15 @@ function drawWord(ctx, it, line, preset, state, W, t) {
     ctx.fill();
   }
 
+  // hero card: rounded color panel behind the hero word (the "topic chip")
+  if (it.hero && preset.extra.heroCard) {
+    const hc = preset.extra.heroCard;
+    const padX = px * 0.3, padY = px * 0.22;
+    ctx.fillStyle = hc.bg || '#c9f24b';
+    roundRect(ctx, -padX, -px * 0.54 - padY, it.wd + padX * 2, px * 1.08 + padY * 2, (hc.radius ?? 0.02) * W);
+    ctx.fill();
+  }
+
   // glitch finish: RGB-split ghost passes
   if (preset.extra.glitch) {
     const off = px * 0.045;
@@ -348,8 +359,9 @@ function drawWord(ctx, it, line, preset, state, W, t) {
     strokeWordText(ctx, txt, f, px);
   }
 
-  // fill
+  // fill (altText alternates word colors for the duo-tone look)
   let fill = it.hero && c.accent ? c.accent : (active ? (c.active || c.text) : c.text);
+  if (!active && !it.hero && c.altText && (it.idx ?? 0) % 2 === 1) fill = c.altText;
   if (boxed && !c.wordBgAll && preset.emphasis === 'box') fill = c.active || '#ffffff';
   if (c.wordBgAll) fill = c.text;
 
@@ -468,6 +480,44 @@ export function drawFrame(ctx, source, t, groups, preset, opts = {}) {
   };
 
   const laid = layoutGroupCached(ctx, g, preset, W, H, opts.layoutVersion);
+
+  // Knockout mode: a near-opaque panel covers the frame and the words are
+  // punched out of it, so the video plays inside the letterforms. The panel
+  // and its holes are built on the scratch layer — punching directly on the
+  // main canvas would erase the video underneath instead of revealing it.
+  if (preset.extra.cutout) {
+    const tc = opts.scratch.getContext('2d');
+    tc.save();
+    tc.clearRect(0, 0, W, H);
+    tc.fillStyle = preset.colors.bg || 'rgba(0,0,0,.96)';
+    tc.fillRect(0, 0, W, H);
+    tc.globalCompositeOperation = 'destination-out';
+    for (const line of laid) {
+      const f = line.font;
+      tc.font = fontString(f, W);
+      tc.textBaseline = 'middle';
+      tc.fillStyle = '#fff';
+      for (const it of line.items) {
+        tc.save();
+        tc.translate(it.x + it.wd * it.scale / 2, it.y);
+        tc.scale(it.scale, it.scale);
+        tc.translate(-it.wd / 2, 0);
+        tc.fillText(it.txt, 0, 0);
+        tc.restore();
+      }
+    }
+    tc.restore();
+    ctx.drawImage(opts.scratch, 0, 0);
+    drawHookTitle(ctx, t, preset, opts, W, H);
+    if (opts.progress != null) {
+      const ph = Math.max(3, H * 0.006);
+      ctx.fillStyle = 'rgba(255,255,255,.25)';
+      ctx.fillRect(0, H - ph, W, ph);
+      ctx.fillStyle = preset.colors.accent || '#ffe600';
+      ctx.fillRect(0, H - ph, W * Math.max(0, Math.min(1, opts.progress)), ph);
+    }
+    return { bounds: blockBounds(laid, preset, W), heroBounds: null, hookBounds: null };
+  }
 
   // caption block background (bar / strip / glass / quote card)
   if (preset.colors.bg) drawBlockBg(ctx, laid, preset, W, H);

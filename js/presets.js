@@ -154,6 +154,84 @@ export const PRESETS = [
     emphasis: 'color', anim: { in: 'pop', perWord: false }, pos: { y: 0.36, align: 'center' },
   }),
 
+  // ── STUDY SET — patterns from the current short-form meta ────────────────
+  D({
+    // frosted glass hero: translucent display word behind the speaker,
+    // solid rounded sans in front. Depth from opacity, not color.
+    id: 'frost', name: 'Frost', category: 'behind', badge: 'NEW', tier: 'pro', behind: true,
+    font: { family: 'Poppins', weight: 700, size: 0.058 },
+    accentFont: { family: 'Archivo Black', weight: 400, size: 0.24, transform: 'lower', letterSpacing: -0.02 },
+    grouping: { mode: 'lockup', maxWords: 6 },
+    heroPos: { y: 0.14 },
+    colors: { text: '#ffffff', active: '#ffffff', accent: 'rgba(255,255,255,.78)', shadow: 'rgba(0,0,0,.45)' },
+    emphasis: 'none', anim: { in: 'fade', perWord: false }, pos: { y: 0.8, align: 'center' },
+    extra: { splitHero: true },
+  }),
+  D({
+    // knockout: the frame goes dark and the video plays inside the letters
+    id: 'knockout', name: 'Knockout', category: 'creators', badge: 'TRENDING', tier: 'pro',
+    font: { family: 'Archivo Black', weight: 400, size: 0.15, transform: 'lower', lineHeight: 1.02 },
+    grouping: { mode: 'chunk', maxWords: 2, maxChars: 12 },
+    colors: { text: '#ffffff', active: '#ffffff', bg: 'rgba(0,0,0,.96)' },
+    emphasis: 'none', anim: { in: 'none', perWord: false }, pos: { y: 0.5, align: 'center' },
+    extra: { cutout: true },
+  }),
+  D({
+    // topic chip: lowercase display on a lime card pinned high, clean
+    // white caption low — the card is the billboard, the caption talks
+    id: 'topline', name: 'Topline', category: 'creators', badge: 'NEW', tier: 'creator', behind: true,
+    font: { family: 'Inter', weight: 600, size: 0.052 },
+    accentFont: { family: '"Space Grotesk"', weight: 700, size: 0.085, transform: 'lower' },
+    grouping: { mode: 'lockup', maxWords: 6 },
+    heroPos: { y: 0.12 },
+    colors: { text: '#ffffff', active: '#c9f24b', accent: '#101408', shadow: 'rgba(0,0,0,.5)' },
+    emphasis: 'color', anim: { in: 'pop', perWord: false }, pos: { y: 0.8, align: 'center' },
+    extra: { splitHero: true, heroCard: { bg: '#c9f24b', radius: 0.024 } },
+  }),
+  D({
+    // handwritten kicker over condensed color caps — scrapbook energy
+    id: 'fieldnotes', name: 'Field Notes', category: 'playful', badge: 'NEW', tier: 'creator',
+    font: { family: 'Caveat', weight: 700, size: 0.075, transform: 'lower' },
+    accentFont: { family: 'Anton', weight: 400, size: 0.135, transform: 'upper', letterSpacing: 0.01 },
+    grouping: { mode: 'lockup', maxWords: 5 },
+    colors: { text: '#ffffff', active: '#ffffff', altText: '#8fd633', accent: '#8fd633', stroke: '#ffffff', strokeWidth: 0, shadow: 'rgba(0,0,0,.4)' },
+    emphasis: 'none', anim: { in: 'rise', perWord: false }, pos: { y: 0.17, align: 'center' },
+  }),
+  D({
+    // huge yellow impact caps up top, quiet serif italic caption below —
+    // one loud voice, one calm one, same ink
+    id: 'sunny', name: 'Sunny Side', category: 'popular', badge: 'NEW', tier: 'creator',
+    font: { family: 'Bitter', weight: 500, style: 'italic', size: 0.052 },
+    accentFont: { family: 'Anton', weight: 400, size: 0.24, transform: 'upper' },
+    grouping: { mode: 'lockup', maxWords: 6 },
+    heroPos: { y: 0.13 },
+    colors: { text: '#ffe81a', active: '#ffffff', accent: '#ffe81a', shadow: 'rgba(0,0,0,.55)' },
+    emphasis: 'color', anim: { in: 'pop', perWord: false }, pos: { y: 0.82, align: 'center' },
+    extra: { splitHero: true },
+  }),
+  D({
+    // red editorial serif hero with a soft self-glow + white serif support
+    id: 'scarlet', name: 'Scarlet', category: 'editorial', badge: 'TRENDING', tier: 'pro',
+    font: { family: '"Instrument Serif"', weight: 400, size: 0.06 },
+    accentFont: { family: '"Instrument Serif"', weight: 400, size: 0.22, transform: 'lower', letterSpacing: -0.01 },
+    grouping: { mode: 'lockup', maxWords: 5 },
+    heroPos: { y: 0.14 },
+    colors: { text: '#f5efe6', active: '#d61f26', accent: '#d61f26', glow: 'rgba(214,31,38,.55)' },
+    emphasis: 'color', anim: { in: 'fade', perWord: false }, pos: { y: 0.8, align: 'center' },
+    extra: { splitHero: true },
+  }),
+  D({
+    // soft rounded display behind the head, duo-tone small caption in front
+    id: 'bubblewrap', name: 'Bubblewrap', category: 'behind', badge: 'NEW', tier: 'pro', behind: true,
+    font: { family: '"Baloo 2"', weight: 800, size: 0.052 },
+    accentFont: { family: '"Baloo 2"', weight: 800, size: 0.2, transform: 'lower' },
+    grouping: { mode: 'lockup', maxWords: 6 },
+    heroPos: { y: 0.15 },
+    colors: { text: '#f3ecd9', active: '#f3ecd9', altText: '#7a8c3b', accent: '#7a8c3b', shadow: 'rgba(0,0,0,.35)' },
+    emphasis: 'none', anim: { in: 'squash', perWord: false }, pos: { y: 0.82, align: 'center' },
+    extra: { splitHero: true },
+  }),
+
   // ── PAIRED HIGHLIGHTS (popular additions) ────────────────────────────────
   D({
     id: 'limelight', name: 'Limelight', category: 'popular', badge: 'TRENDING', tier: 'creator',
@@ -478,8 +556,8 @@ export const PRESETS = [
 // styles surfaced under "Popular" also keep their home category; build the tab lists here
 export function presetsForCategory(catId) {
   if (catId === 'popular') {
-    const ids = ['gilded', 'beast-bold', 'limelight', 'spotlit', 'karaoke-flip', 'boxed-hype',
-                 'muse', 'clean-bar', 'one-word-pop', 'bubble-pop', 'swiss-lockup', 'neon-glow'];
+    const ids = ['gilded', 'sunny', 'knockout', 'beast-bold', 'limelight', 'spotlit', 'scarlet',
+                 'karaoke-flip', 'boxed-hype', 'muse', 'clean-bar', 'one-word-pop', 'bubble-pop', 'swiss-lockup'];
     return ids.map(id => PRESETS.find(p => p.id === id)).filter(Boolean);
   }
   return PRESETS.filter(p => p.category === catId);
@@ -496,6 +574,7 @@ export const FONT_FAMILIES = [
   'Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,300;1,9..144,400',
   'Bodoni Moda:opsz,wght@6..96,700', 'DM Serif Display:ital@0;1', 'Space Grotesk:wght@500;700',
   'Gloock', 'Instrument Serif:ital@0;1', 'Rubik Spray Paint', 'Alfa Slab One', 'Source Sans 3:wght@400;600',
+  'Bitter:ital,wght@1,500', 'Caveat:wght@700',
   'Permanent Marker', 'Poppins:wght@600;800', 'Bangers', 'Abril Fatface',
   'Bebas Neue', 'Titan One', 'Space Mono:wght@700', 'Oswald:ital,wght@0,600;0,700;1,700',
   'Cormorant Garamond:ital,wght@0,600;1,600', 'Libre Caslon Text:wght@700',

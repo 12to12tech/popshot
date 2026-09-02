@@ -837,6 +837,16 @@ async function renderStyleGrid() {
     if (cached) cv.getContext('2d').drawImage(cached, 0, 0);
     else pending.push({ cv, p, key });
   }
+  // rAF keeps the UI responsive; the timeout fallback keeps cards filling in
+  // even when the window is hidden and rAF is paused
+  let scheduled = false;
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    const run = () => { if (!scheduled) return; scheduled = false; renderChunk(); };
+    requestAnimationFrame(run);
+    setTimeout(run, 150);
+  };
   const renderChunk = () => {
     if (token !== styleGridSeq) return;
     for (const job of pending.splice(0, 3)) {
@@ -847,9 +857,9 @@ async function renderStyleGrid() {
       cardCache.set(job.key, copy);
       if (cardCache.size > 120) cardCache.delete(cardCache.keys().next().value);
     }
-    if (pending.length) requestAnimationFrame(renderChunk);
+    if (pending.length) schedule();
   };
-  requestAnimationFrame(renderChunk); // let the tab switch paint before any card renders
+  schedule(); // let the tab switch paint before any card renders
 }
 
 function syntheticMask() {
