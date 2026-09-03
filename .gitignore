@@ -1,3 +1,5 @@
 assets/samples/
 .vercel/
 .env
+.vercel
+.env*

@@ -865,6 +865,39 @@ function applyTemplate(tpl, el) {
   if (!S.image) note('Template loaded — drop an image in and it will take this look.');
 }
 
+// ── deep links ────────────────────────────────────────────────────────────
+// The nav menu links straight at an animation or effect, e.g. paper.html#boil
+// or paper.html#countrymap. Handled on load and on hashchange, so following a
+// menu link from this page switches without a reload.
+function applyHash() {
+  const id = decodeURIComponent(location.hash.replace('#', '')).trim();
+  if (!id) return false;
+  if (ANIM_BY_ID[id]) {
+    S.motion.anim = id;
+    const a = ANIM_BY_ID[id];
+    S.motion.dur = a.dur;
+    S.motion.loop = !!a.loop;
+    animSel.value = id;
+    $('dur').value = a.dur; $('vDur').textContent = a.dur;
+    $('loop').checked = S.motion.loop;
+    syncAnim();
+    setMode('image');
+    rebuildArt(0);
+    return true;
+  }
+  if (EFFECT_BY_ID[id]) {
+    S.fx.id = id;
+    S.fx.dur = null;
+    invalidateFx();
+    setMode('text');
+    return true;
+  }
+  return false;
+}
+window.addEventListener('hashchange', () => {
+  if (applyHash()) document.querySelector('.pf-app')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
 // ── boot ──────────────────────────────────────────────────────────────────
 // On a phone every panel open at once buries the canvas under a very long
 // scroll, so only the first one starts expanded.
@@ -880,6 +913,7 @@ $('bgLocked').hidden = true;
 setPlaying(true);
 buildLab();
 requestAnimationFrame(loop);
+applyHash();
 document.fonts.ready.then(() => {
   invalidateFx();
   for (const c of cards) { c.cacheKey = null; c.cache = null; }

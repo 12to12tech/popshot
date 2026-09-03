@@ -38,13 +38,63 @@
 
 <header class="nav">
   <a class="logo" href="index.html"><svg class="icon icon-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.5l2.1 6.1 6.4 1.4-6.4 1.4L12 17.5l-2.1-6.1-6.4-1.4 6.4-1.4z" fill="currentColor"/></svg> Popshot</a>
-  <nav class="nav-links">
+  <nav class="nav-links" id="navLinks">
     <a href="index.html#styles">Styles</a>
     <a href="index.html#how">How it works</a>
-    <a href="paper.html">Paper</a>
-    <a href="tools.html">Tools</a>
+    <div class="nav-drop" data-navdrop>
+      <button type="button" class="nav-drop-btn" aria-expanded="false">Animations
+        <svg class="icon icon-sm nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="nav-panel" hidden>
+        <div class="nav-panel-grid">
+      <div class="nav-col wide">
+        <span class="nav-col-h">Paper animation</span>
+        <a href="paper.html#foldout">Fold-out<em>Folds</em></a>
+        <a href="paper.html#quarters">Quarter fold<em>Folds</em></a>
+        <a href="paper.html#concertina">Concertina<em>Folds</em></a>
+        <a href="paper.html#rip">Rip reveal<em>Reveals</em></a>
+        <a href="paper.html#popin">Cut-out pop<em>Entrances</em></a>
+        <a href="paper.html#flip">Paper flip<em>Entrances</em></a>
+        <a href="paper.html#flutter">Flutter<em>Loops</em></a>
+        <a href="paper.html#boil">Stop-motion boil<em>Loops</em></a>
+        <a href="paper.html#stack">Layer stack<em>Entrances</em></a>
+        <a href="paper.html#slide">Slide up<em>Entrances</em></a>
+      </div>
+      <div class="nav-col">
+        <span class="nav-col-h">Typography</span>
+        <a href="paper.html#ransom">Magazine Letters</a>
+        <a href="paper.html#powboom">Pow Boom Typography</a>
+        <a href="paper.html#turing">Turing Pattern Typography</a>
+        <a href="paper.html#wordsphere">Word Sphere</a>
+        <a href="paper.html#textcube">Text Cube</a>
+        <a href="paper.html#depthfocus">Depth Focus</a>
+      </div>
+      <div class="nav-col">
+        <span class="nav-col-h">Match cuts</span>
+        <a href="paper.html#matchcut">Match Cut</a>
+        <a href="paper.html#commentmatch">Comment Match Cut</a>
+        <a href="paper.html#reshuffle">Text Reshuffle</a>
+      </div>
+      <div class="nav-col">
+        <span class="nav-col-h">Scenes</span>
+        <a href="paper.html#typewriter">Typewriter</a>
+        <a href="paper.html#magnifier">Magnifying Glass</a>
+        <a href="paper.html#countrymap">Country Map</a>
+        <a href="paper.html#texttrail">Text Trail</a>
+      </div>
+        </div>
+        <div class="nav-panel-foot">
+          <span>Ten paper animations, thirteen typography and scene effects, 29 ready-made templates.</span>
+          <a class="btn btn-primary" href="paper.html">Open Paper →</a>
+        </div>
+      </div>
+    </div>
+    <a href="tools.html" class="here">Tools</a>
     <a href="index.html#pricing">Pricing</a>
   </nav>
+  <button type="button" class="nav-toggle" id="navToggle" aria-expanded="false" aria-label="Menu">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+  </button>
   <a class="btn btn-primary" href="editor.html"><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create →</a>
 </header>
 
@@ -80,5 +130,6 @@
 </footer>
 
 <script type="module" src="js/tools.js"></script>
+<script type="module" src="js/navmenu.js"></script>
 </body>
 </html>
