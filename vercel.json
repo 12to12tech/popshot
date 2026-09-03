@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/paper", "destination": "/paper.html" },
+    { "source": "/tools", "destination": "/tools.html" },
+    { "source": "/editor", "destination": "/editor.html" }
+  ]
+}

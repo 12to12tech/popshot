@@ -53,10 +53,56 @@ by appending an object (fonts, colors, grouping, emphasis, animation, position);
 it appears in the gallery and editor automatically. Add any new font family to
 `FONT_FAMILIES` in the same file.
 
+## Paper (`/paper`)
+
+A second tool on the same site: turn any image into a torn-paper cut-out and animate it.
+Also zero-backend — segmentation, rendering and encoding all happen in the tab.
+
+- **Cut out** the subject with on-device person segmentation, or grow a selection in from
+  the frame border for flat/gradient backdrops, or keep the whole rectangle. A PNG that
+  already has alpha is used as its own cut. Tighten / soften / invert, plus a brush.
+- **Tear the edge** — the mask is traced with marching squares into a real polygon, pushed
+  out along its own normals by layered periodic noise and feathered with fibres, so the
+  deckle stays crisp from a 400px preview to a 1920px export. Grain, cardstock layers,
+  inner shading and a cast shadow on top.
+- **Animate** — ten motions in `js/paperanim.js`: fold-out, quarter fold, concertina, rip
+  reveal, cut-out pop, paper flip, flutter loop, stop-motion boil (the torn edge is re-cut
+  every frame), layer stack, slide up.
+- **Effects** — thirteen more animations that do not need an image, in three groups:
+  - *Typography* — Magazine Letters (ransom scraps), Pow Boom (elastic comic bursts),
+    Turing Pattern (a live Gray-Scott reaction-diffusion field growing out of the type),
+    Word Sphere, Text Cube, Depth Focus.
+  - *Match cuts* — Match Cut (shared letters hold their place), Comment Match Cut (a bold
+    line cutting over a morphing stack of generated comment rows), Text Reshuffle (whole
+    words fly to their new slot).
+  - *Scenes* — Typewriter, Magnifying Glass, Country Map (real outlines pulled from a CDN,
+    drawn onto parchment with a compass and a pin), Text Trail.
+
+  Each effect declares its own field schema in `js/effects.js` and the control rail builds
+  its panel from that, so adding one is adding an object — no UI work.
+- **Motion Lab** — 29 templates (`js/papertemplates.js`) in four categories: Paper,
+  Typography, Match cuts and Scenes. Each is a complete setup and all of them animate live
+  in the gallery.
+- **Export** — transparent PNG, animated GIF (optional 1-bit alpha, via `gifenc`), or
+  MP4/WebM through MediaRecorder on a solid or green-screen background.
+
+Run it at `http://localhost:8020/paper`.
+
 ## Files
 
 | File | Purpose |
 |---|---|
+| `paper.html` + `css/paper.css` + `js/paper.js` | The paper cut-out animator page |
+| `js/paperfx.js` | Mask tracing, torn-edge geometry, sheet rendering |
+| `js/paperanim.js` | The ten paper animations |
+| `js/cutout.js` | Person segmentation, backdrop removal, mask refinement |
+| `js/papertext.js` | Magazine letters and the match cut |
+| `js/papertemplates.js` | Motion Lab template definitions |
+| `js/fxcore.js` | Shared effect helpers: grounds, text layout, partial strokes, 3D |
+| `js/fxtype.js` | Typography effects (Pow Boom, Turing, sphere, cube, depth) |
+| `js/fxscene.js` | Scene effects (typewriter, lens, map, trail, comments, reshuffle) |
+| `js/effects.js` | Effect registry and field schemas |
+| `js/paperout.js` | PNG / GIF / video export |
 | `index.html` + `css/landing.css` + `js/landing.js` | Marketing landing page with live style gallery |
 | `editor.html` + `css/editor.css` + `js/editor.js` | The 5-step editor app |
 | `js/engine.js` | Canvas caption renderer (grouping, layout, animation, FX) |

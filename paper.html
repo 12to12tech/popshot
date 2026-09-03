@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Popshot Paper — paper cut-out animator</title>
+<meta name="description" content="Turn any image into a torn-paper cut-out and animate it — fold-outs, rip reveals, stop-motion boil, magazine letters and match cuts. Runs entirely in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="gfonts" rel="stylesheet" href="">
+<link rel="stylesheet" href="css/landing.css">
+<link rel="stylesheet" href="css/paper.css">
+</head>
+<body>
+
+<header class="nav">
+  <a class="logo" href="index.html"><svg class="icon icon-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.5l2.1 6.1 6.4 1.4-6.4 1.4L12 17.5l-2.1-6.1-6.4-1.4 6.4-1.4z" fill="currentColor"/></svg> Popshot</a>
+  <nav class="nav-links">
+    <a href="index.html#styles">Styles</a>
+    <a href="index.html#how">How it works</a>
+    <a href="paper.html" class="here">Paper</a>
+    <a href="tools.html">Tools</a>
+    <a href="index.html#pricing">Pricing</a>
+  </nav>
+  <a class="btn btn-primary" href="editor.html">Caption studio →</a>
+</header>
+
+<section class="pf-head">
+  <div>
+    <div class="kicker">PAPER · IN YOUR BROWSER</div>
+    <h1>Make anything<br>out of paper.</h1>
+    <p class="lead">Cut the subject out, tear a paper edge around it, then fold it, rip it or let it
+      boil like stop-motion. Nothing uploads — the cut-out, the render and the export all run on
+      this machine.</p>
+  </div>
+  <div class="pf-modes" role="tablist" aria-label="Tool">
+    <button class="pf-mode active" data-mode="image" role="tab" aria-selected="true">Paper</button>
+    <button class="pf-mode" data-mode="text" role="tab" aria-selected="false">Effects</button>
+  </div>
+</section>
+
+<main class="pf-app">
+  <!-- ── stage ───────────────────────────────────────────────────────── -->
+  <section class="pf-stage">
+    <div class="pf-canvas-wrap" id="stageWrap">
+      <canvas id="stage" width="900" height="900"></canvas>
+      <canvas id="maskStage" hidden></canvas>
+      <div class="pf-drop" id="drop">
+        <div class="hd-plus"><svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <p><strong>Drop an image</strong> or click to choose</p>
+        <span class="hd-sub">PNG · JPG · WebP · a PNG that already has alpha works too</span>
+        <button class="btn btn-secondary pf-sample" id="useSample" type="button">Try the sample shape</button>
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <div class="pf-busy" id="busy" hidden><span class="pf-spin"></span><span id="busyText">Working…</span></div>
+    </div>
+
+    <div class="pf-transport">
+      <button class="pf-play" id="play" type="button" aria-label="Play">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <input type="range" id="scrub" min="0" max="1000" value="1000" step="1" aria-label="Time">
+      <span class="pf-time" id="time">0.0s</span>
+      <button class="btn btn-secondary pf-mini" id="replay" type="button">Replay</button>
+    </div>
+    <p class="pf-note" id="stageNote">Drop an image to begin — or start from a template below.</p>
+  </section>
+
+  <!-- ── control rail ────────────────────────────────────────────────── -->
+  <aside class="pf-rail">
+
+    <details class="pf-sec" open data-for="image">
+      <summary>Cut-out</summary>
+      <div class="pf-body">
+        <div class="pf-seg" id="cutModes">
+          <button data-cut="subject" class="active">Subject</button>
+          <button data-cut="backdrop">Backdrop</button>
+          <button data-cut="sheet">Whole sheet</button>
+        </div>
+        <p class="pf-hint" id="cutHint">Finds a person on-device and cuts around them.</p>
+        <label class="pf-field" data-cut-only="backdrop"><span>Tolerance <b id="vTol">0.14</b></span>
+          <input type="range" id="tol" min="0.03" max="0.5" step="0.01" value="0.14"></label>
+        <label class="pf-field"><span>Tighten edge <b id="vErode">1</b>px</span>
+          <input type="range" id="erode" min="0" max="8" step="0.5" value="1"></label>
+        <label class="pf-field"><span>Soften edge <b id="vFeather">1.2</b>px</span>
+          <input type="range" id="feather" min="0" max="8" step="0.2" value="1.2"></label>
+        <div class="pf-row">
+          <label class="pf-check"><input type="checkbox" id="invert"> Invert</label>
+          <button class="btn btn-secondary pf-mini" id="touchup" type="button">Touch up…</button>
+        </div>
+        <div class="pf-touch" id="touchPanel" hidden>
+          <div class="pf-seg small" id="brushModes">
+            <button data-brush="keep" class="active">Restore</button>
+            <button data-brush="cut">Erase</button>
+          </div>
+          <label class="pf-field"><span>Brush <b id="vBrush">40</b>px</span>
+            <input type="range" id="brush" min="6" max="160" step="2" value="40"></label>
+          <div class="pf-row">
+            <button class="btn btn-secondary pf-mini" id="resetMask" type="button">Reset mask</button>
+            <button class="btn btn-primary pf-mini" id="doneTouch" type="button">Done</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="pf-sec" open data-for="image">
+      <summary>Paper</summary>
+      <div class="pf-body">
+        <label class="pf-field"><span>Edge thickness <b id="vEdge">3.4</b>%</span>
+          <input type="range" id="edge" min="0.4" max="9" step="0.1" value="3.4"></label>
+        <label class="pf-field"><span>Raggedness <b id="vRag">0.55</b></span>
+          <input type="range" id="ragged" min="0" max="1.4" step="0.05" value="0.55"></label>
+        <label class="pf-field"><span>Cardstock layers <b id="vLayers">1</b></span>
+          <input type="range" id="layers" min="1" max="3" step="1" value="1"></label>
+        <label class="pf-field"><span>Shadow <b id="vShadow">0.5</b></span>
+          <input type="range" id="shadow" min="0" max="1" step="0.05" value="0.5"></label>
+        <label class="pf-field"><span>Grain <b id="vGrain">0.4</b></span>
+          <input type="range" id="grain" min="0" max="1" step="0.05" value="0.4"></label>
+        <label class="pf-field"><span>Torn fibres <b id="vFibres">0.7</b></span>
+          <input type="range" id="fibres" min="0" max="1" step="0.05" value="0.7"></label>
+        <div class="pf-row">
+          <label class="pf-swatchrow"><span>Paper</span>
+            <input type="color" id="tint" value="#fbf7ec"></label>
+          <button class="btn btn-secondary pf-mini" id="reseed" type="button">Re-tear</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="pf-sec" open data-for="image">
+      <summary>Motion</summary>
+      <div class="pf-body">
+        <label class="pf-field"><span>Animation</span>
+          <select id="anim"></select></label>
+        <p class="pf-hint" id="animHint"></p>
+        <label class="pf-field"><span>Duration <b id="vDur">2.4</b>s</span>
+          <input type="range" id="dur" min="0.6" max="8" step="0.1" value="2.4"></label>
+        <label class="pf-field" id="panelsField"><span>Fold panels <b id="vPanels">3</b></span>
+          <input type="range" id="panels" min="2" max="8" step="1" value="3"></label>
+        <label class="pf-field"><span>Fill frame <b id="vZoom">0.84</b></span>
+          <input type="range" id="zoom" min="0.4" max="1.15" step="0.01" value="0.84"></label>
+        <label class="pf-check"><input type="checkbox" id="loop" checked> Loop preview</label>
+      </div>
+    </details>
+
+    <details class="pf-sec" open data-for="text">
+      <summary>Effect</summary>
+      <div class="pf-body">
+        <label class="pf-field"><span>Effect</span>
+          <select id="fxSelect"></select></label>
+        <p class="pf-hint" id="fxHint"></p>
+        <div id="fxFields" class="pf-fields"></div>
+        <div class="pf-row">
+          <label class="pf-field pf-grow"><span>Duration <b id="vFxDur">2.4</b>s</span>
+            <input type="range" id="fxDur" min="0.6" max="14" step="0.1" value="2.4"></label>
+        </div>
+        <div class="pf-row">
+          <label class="pf-check"><input type="checkbox" id="fxLoop" checked> Loop preview</label>
+          <button class="btn btn-secondary pf-mini" id="reseedText" type="button">Re-shuffle</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="pf-sec" open>
+      <summary>Canvas</summary>
+      <div class="pf-body">
+        <div class="pf-seg" id="aspects">
+          <button data-aspect="1:1" class="active">1:1</button>
+          <button data-aspect="9:16">9:16</button>
+          <button data-aspect="4:5">4:5</button>
+          <button data-aspect="16:9">16:9</button>
+        </div>
+        <div id="bgRow">
+        <span class="pf-sublabel">Background</span>
+        <div class="pf-swatches" id="bgs">
+          <button data-bg="transparent" class="checker" title="Transparent"></button>
+          <button data-bg="#f7f6f1" class="active" style="background:#f7f6f1" title="Cream"></button>
+          <button data-bg="#ffffff" style="background:#fff" title="White"></button>
+          <button data-bg="#16161c" style="background:#16161c" title="Ink"></button>
+          <button data-bg="#5145cd" style="background:#5145cd" title="Brand"></button>
+          <button data-bg="#00b140" style="background:#00b140" title="Green screen"></button>
+          <label class="pf-custombg" title="Custom"><input type="color" id="bgCustom" value="#e6e2d6"></label>
+        </div>
+        </div>
+        <p class="pf-hint" id="bgLocked" hidden>This effect paints its own ground — its colours are in the Effect panel.</p>
+      </div>
+    </details>
+
+    <details class="pf-sec" open>
+      <summary>Export</summary>
+      <div class="pf-body">
+        <div class="pf-exportgrid">
+          <button class="btn btn-secondary" id="expPng" type="button">PNG frame</button>
+          <button class="btn btn-secondary" id="expGif" type="button">Animated GIF</button>
+          <button class="btn btn-primary" id="expVid" type="button">Video</button>
+        </div>
+        <label class="pf-field"><span>GIF width <b id="vGifW">640</b>px</span>
+          <input type="range" id="gifW" min="240" max="1080" step="20" value="640"></label>
+        <label class="pf-field"><span>GIF frame rate <b id="vGifFps">20</b>fps</span>
+          <input type="range" id="gifFps" min="8" max="30" step="1" value="20"></label>
+        <label class="pf-check"><input type="checkbox" id="gifAlpha"> Transparent GIF (1-bit)</label>
+        <label class="pf-field"><span>Repeats <b id="vRepeats">1</b></span>
+          <input type="range" id="repeats" min="1" max="6" step="1" value="1"></label>
+        <div class="pf-progress" id="progWrap" hidden><div id="progBar"></div></div>
+        <p class="pf-hint" id="exportHint">Video has no alpha — pick the green-screen background if you
+          plan to key it out in an editor.</p>
+      </div>
+    </details>
+  </aside>
+</main>
+
+<!-- ── motion lab ────────────────────────────────────────────────────── -->
+<section class="section alt pf-lab" id="lab">
+  <div class="kicker">MOTION LAB</div>
+  <h2>Templates</h2>
+  <p class="lead">Each card is a full setup — paper, animation, canvas and background. Click one and it
+    loads with whatever image you have open. They all animate live, right here.</p>
+  <div class="cat-tabs" id="labTabs"></div>
+  <div class="pf-labgrid" id="labGrid"></div>
+</section>
+
+<section class="section">
+  <div class="kicker">HOW IT WORKS</div>
+  <h2>Four steps, no server.</h2>
+  <div class="steps-grid">
+    <div class="step-card"><div class="num">1</div><h3>Cut it out</h3>
+      <p>On-device person segmentation, or grow a selection in from the border for flat and gradient
+        backdrops. Touch up whatever it missed with a brush.</p></div>
+    <div class="step-card"><div class="num">2</div><h3>Tear the edge</h3>
+      <p>The cut is traced into a real polygon, pushed outward along its own normals with layered
+        noise and feathered with fibres, so the deckle stays crisp at any export size.</p></div>
+    <div class="step-card"><div class="num">3</div><h3>Move it</h3>
+      <p>Ten paper animations — fold-outs, a rip reveal, an edge-on flip, a flutter loop, a
+        stop-motion boil that re-cuts the torn edge on every frame — plus thirteen typography
+        and scene effects in the Effects tab.</p></div>
+    <div class="step-card"><div class="num">4</div><h3>Take it away</h3>
+      <p>Transparent PNG, animated GIF with optional 1-bit alpha, or an MP4/WebM on a green screen
+        for keying in your editor.</p></div>
+  </div>
+</section>
+
+<footer class="footer">
+  <span><svg class="icon icon-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.5l2.1 6.1 6.4 1.4-6.4 1.4L12 17.5l-2.1-6.1-6.4-1.4 6.4-1.4z" fill="currentColor"/></svg> Popshot Paper — everything renders in this tab.</span>
+  <span>Built as a functional clone study. Not affiliated with paperanimator.com.</span>
+</footer>
+
+<script type="module" src="js/paper.js"></script>
+</body>
+</html>

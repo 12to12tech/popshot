@@ -177,6 +177,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(200, {'ok': bool(LLM_KEY), 'model': LLM_MODEL if LLM_KEY else None})
         if self.path.startswith('/finalize/health'):
             return self._json(200, {'ok': bool(FFMPEG)})
+        # clean URLs: /paper -> paper.html (matches the Vercel rewrite)
+        clean = self.path.split('?', 1)[0].strip('/')
+        if clean and '.' not in clean and os.path.exists(clean + '.html'):
+            self.path = '/' + clean + '.html'
         return super().do_GET()
 
     def do_POST(self):
