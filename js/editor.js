@@ -315,6 +315,29 @@ dz.addEventListener('drop', (e) => {
   else toast('Drop a video file (MP4, MOV or WebM)');
 });
 
+// Some containers carry no duration at all: MediaRecorder WebM never writes a
+// Duration element, and plenty of phone and screen-capture files omit it too.
+// The element then reports Infinity until it has been seeked past the end
+// once. Everything downstream reads this — the scrubber, the zoom plan, the
+// progress bar, the thumbnail time — so it has to be recovered before anyone
+// looks at it, otherwise the transcript is complete while the video refuses to
+// follow it.
+async function ensureDuration() {
+  if (isFinite(video.duration) && video.duration > 0) return video.duration;
+  const prev = video.currentTime;
+  await new Promise((res) => {
+    const done = () => { video.removeEventListener('seeked', done); res(); };
+    video.addEventListener('seeked', done);
+    try { video.currentTime = 1e7; } catch { done(); }
+    setTimeout(done, 5000);
+  });
+  try { video.currentTime = Math.min(prev || 0, 0.05); } catch { /* ignore */ }
+  if (!(isFinite(video.duration) && video.duration > 0)) {
+    toast('This file carries no duration — captions past the first seconds may not line up. Re-export it as MP4.');
+  }
+  return video.duration;
+}
+
 function loadFile(file) {
   state.file = file;
   state.bulkLinkId = null;   // a fresh clip is not a bulk preview
@@ -322,7 +345,8 @@ function loadFile(file) {
   state.url = URL.createObjectURL(file);
   video.src = state.url;
   video.load();
-  video.addEventListener('loadedmetadata', () => {
+  video.addEventListener('loadedmetadata', async () => {
+    await ensureDuration();
     $('transcribeCard').hidden = false;
     $('scrubber').max = video.duration;
     $('timeDur').textContent = fmtTime(video.duration);
@@ -419,6 +443,21 @@ async function runTranscription({ silent = false } = {}) {
       words = words.map(w => hasDevanagari(w.text) ? { ...w, orig: w.text, text: romanise(w.text) } : w);
     }
     state.words = words;
+    // The transcript is decoded straight from the audio stream, so it knows
+    // the real length even when the container lies about it. If speech runs
+    // past the duration the video element reports, that duration is wrong —
+    // captions would simply stop at the fake end while the transcript kept
+    // going. Try to recover it, and say so plainly if it cannot be.
+    const lastEnd = words.reduce((m, w) => Math.max(m, w.end || 0), 0);
+    if (lastEnd > (video.duration || 0) + 0.5) {
+      await ensureDuration();
+      if (lastEnd > (video.duration || 0) + 0.5) {
+        toast(`This file reports ${fmtTime(video.duration)} but has ${fmtTime(lastEnd)} of speech — `
+          + 'its duration metadata is wrong. Re-export it as MP4 to caption the whole clip.', 9000);
+      }
+      $('scrubber').max = video.duration;
+      $('timeDur').textContent = fmtTime(video.duration);
+    }
     afterTranscript();
     return true;
   } catch (err) {
@@ -1730,7 +1769,8 @@ function applyBulkItem(item) {
     state.url = URL.createObjectURL(item.file);
     video.src = state.url;
     video.load();
-    video.addEventListener('loadedmetadata', () => {
+    video.addEventListener('loadedmetadata', async () => {
+      await ensureDuration();
       $('scrubber').max = video.duration;
       $('timeDur').textContent = fmtTime(video.duration);
       applyScriptMode(item.words);   // honor the current writing system even if it changed
